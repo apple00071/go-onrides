@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, forwardRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import dynamic from 'next/dynamic';
+import Image from 'next/image';
 import { v4 as uuidv4 } from 'uuid';
 import type SignatureCanvas from 'react-signature-canvas';
 
@@ -20,8 +21,8 @@ const formSchema = z.object({
   lastName: z.string().min(2, "Last name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   phone: z.string().min(10, "Phone number must be at least 10 digits"),
-  fatherPhone: z.string().min(10, "Father's phone number must be at least 10 digits"),
-  motherPhone: z.string().min(10, "Mother's phone number must be at least 10 digits"),
+  fatherPhone: z.string().min(10, "Father&apos;s phone number must be at least 10 digits"),
+  motherPhone: z.string().min(10, "Mother&apos;s phone number must be at least 10 digits"),
   emergencyContact1: z.string().min(10, "Emergency contact 1 must be at least 10 digits"),
   emergencyContact2: z.string().min(10, "Emergency contact 2 must be at least 10 digits"),
   address: z.string().min(5, "Address must be at least 5 characters"),
@@ -375,7 +376,7 @@ const BikeRentalForm = () => {
           
           <div>
             <label htmlFor="fatherPhone" className="block text-sm font-medium text-gray-700 mb-1">
-              Father's Phone Number
+              Father&apos;s Phone Number
             </label>
             <input
               id="fatherPhone"
@@ -390,7 +391,7 @@ const BikeRentalForm = () => {
           
           <div>
             <label htmlFor="motherPhone" className="block text-sm font-medium text-gray-700 mb-1">
-              Mother's Phone Number
+              Mother&apos;s Phone Number
             </label>
             <input
               id="motherPhone"
@@ -557,11 +558,14 @@ const BikeRentalForm = () => {
             </div>
             
             {customerPhotoPreview && (
-              <div className="w-32 h-32 border rounded-md overflow-hidden flex-shrink-0">
-                <img 
+              <div className="w-32 h-32 border rounded-md overflow-hidden flex-shrink-0 relative">
+                <Image 
                   src={customerPhotoPreview} 
                   alt="Customer preview" 
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="(max-width: 768px) 100vw, 128px"
+                  className="object-cover"
+                  priority
                 />
               </div>
             )}
