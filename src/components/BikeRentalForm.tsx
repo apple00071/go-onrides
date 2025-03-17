@@ -508,7 +508,7 @@ const BikeRentalForm = () => {
         <div className="border rounded-md p-4">
           <h3 className="text-lg font-medium mb-2" style={{ color: '#F36D22' }}>Document Upload</h3>
           <p className="text-sm text-gray-600 mb-4">
-            Please upload a copy of your ID or driver's license.
+            Please upload a copy of your ID or driver&apos;s license.
           </p>
           
           <input
