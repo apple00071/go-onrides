@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
-import { dynamic, revalidate } from '@/app/api/config';
+import { dynamic, revalidate, runtime } from '@/app/api/config';
 
 async function handler(
   request: AuthenticatedRequest,

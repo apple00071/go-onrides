@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { withRoleCheck } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
-import { dynamic, revalidate } from '../../../config';
+import { dynamic, runtime } from '@/app/api/config';
+
+export { dynamic, runtime };
 
 async function handler(request: AuthenticatedRequest) {
   try {

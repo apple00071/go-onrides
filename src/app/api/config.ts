@@ -1,3 +1,27 @@
-// This file marks all API routes as dynamic
+// Configuration for all API routes
 export const dynamic = 'force-dynamic';
-export const revalidate = 0; 
+export const runtime = 'nodejs';
+
+// Revalidation settings
+export const revalidate = 0; // Disable cache
+
+// CORS configuration
+export const corsHeaders = {
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Credentials': 'true',
+};
+
+// Helper function to handle CORS preflight requests
+export async function handleCORS(request: Request) {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Allow-Origin': request.headers.get('origin') || '*',
+      },
+    });
+  }
+  return null;
+} 

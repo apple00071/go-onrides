@@ -2,16 +2,18 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
-import { dynamic, revalidate } from '../../config';
+import { dynamic, runtime } from '@/app/api/config';
+
+export { dynamic, runtime };
 
 async function handler(request: AuthenticatedRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const query = searchParams.get('q') || '';
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const offset = (page - 1) * limit;
+  const searchParams = new URL(request.url).searchParams;
+  const query = searchParams.get('q') || '';
+  const page = parseInt(searchParams.get('page') || '1');
+  const limit = parseInt(searchParams.get('limit') || '10');
+  const offset = (page - 1) * limit;
 
+  try {
     // Search customers using Supabase full-text search
     const { data: customers, error, count } = await supabase
       .from('customers')
@@ -49,4 +51,4 @@ async function handler(request: AuthenticatedRequest) {
   }
 }
 
-export const GET = withAuth(handler); 
+export { handler as GET }; 

@@ -5,6 +5,8 @@ import { supabase } from '@/lib/db';
 
 // Mark as Node.js runtime
 export const runtime = 'nodejs';
+// Force dynamic
+export const dynamic = 'force-dynamic';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const secret = new TextEncoder().encode(JWT_SECRET);

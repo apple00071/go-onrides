@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
+import { dynamic, runtime } from '@/app/api/config';
+
+export { dynamic, runtime };
 
 interface Booking {
   id: number;
@@ -347,6 +350,4 @@ function isValidPhone(phone: string): boolean {
   return /^\d{10}$/.test(phone);
 }
 
-export const GET = withAuth(getCustomer);
-export const PUT = withAuth(updateCustomer);
-export const DELETE = withAuth(deleteCustomer); 
+export { getCustomer as GET, updateCustomer as PUT, deleteCustomer as DELETE }; 

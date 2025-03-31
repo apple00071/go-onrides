@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
+import { dynamic, runtime } from '@/app/api/config';
 
 async function getBookings(request: AuthenticatedRequest) {
   try {

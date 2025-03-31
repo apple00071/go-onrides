@@ -3,10 +3,11 @@ import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
 import * as jose from 'jose';
 import { supabase } from '@/lib/db';
-import { dynamic, revalidate } from '../../config';
 
 // Mark as Node.js runtime
 export const runtime = 'nodejs';
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const secret = new TextEncoder().encode(JWT_SECRET);
