@@ -12,7 +12,14 @@ import type SignatureCanvas from 'react-signature-canvas';
 // Dynamically import SignatureCanvas with no SSR to prevent hydration issues
 const SignaturePad = dynamic(
   () => import('react-signature-canvas'),
-  { ssr: false }
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="border rounded border-gray-300 mb-2 flex items-center justify-center" style={{ height: '200px' }}>
+        <p className="text-gray-500">Signature pad loading...</p>
+      </div>
+    )
+  }
 );
 
 // Form validation schema
@@ -57,6 +64,7 @@ const BikeRentalForm = () => {
   // Set mounted state
   useEffect(() => {
     setIsMounted(true);
+    return () => setIsMounted(false);
   }, []);
 
   const {
@@ -81,24 +89,6 @@ const BikeRentalForm = () => {
       agreementAccepted: false,
     },
   });
-
-  // Add resize observer to handle canvas sizing
-  useEffect(() => {
-    if (!isMounted) return;
-    
-    if (sigCanvas.current) {
-      const canvasElement = sigCanvas.current;
-      
-      // Force canvas to clear and resize properly on component mount
-      setTimeout(() => {
-        if (canvasElement) {
-          canvasElement.clear();
-          
-          // Canvas sizing will be handled by CSS instead of direct manipulation
-        }
-      }, 100);
-    }
-  }, [isMounted]);
 
   const handleClearSignature = () => {
     if (sigCanvas.current) {
@@ -242,52 +232,41 @@ const BikeRentalForm = () => {
 
   // Conditional rendering for the signature pad
   const renderSignaturePad = () => {
-    if (!isMounted) {
-      return (
-        <div className="border rounded border-gray-300 mb-2 flex items-center justify-center" style={{ height: '200px' }}>
-          <p className="text-gray-500">Signature pad loading...</p>
-        </div>
-      );
+    if (typeof window === 'undefined' || !isMounted) {
+      return null;
     }
     
     return (
       <div className="border rounded border-gray-300 mb-2 relative" style={{ height: '200px', touchAction: 'none' }}>
-        {isMounted && (
-          <SignaturePad
-            canvasProps={{
-              width: '100%',
-              height: '200px',
-              className: 'signature-canvas',
-              style: { 
-                width: '100%', 
-                height: '100%',
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                touchAction: 'none'
-              }
-            }}
-            onBegin={onBeginDrawing}
-            onEnd={onEndDrawing}
-            backgroundColor="rgba(255, 255, 255, 0)"
-            penColor="black"
-          />
-        )}
+        <SignaturePad
+          canvasProps={{
+            width: '100%',
+            height: '200px',
+            className: 'signature-canvas',
+            style: { 
+              width: '100%', 
+              height: '100%',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              touchAction: 'none'
+            }
+          }}
+          onBegin={onBeginDrawing}
+          onEnd={onEndDrawing}
+          backgroundColor="rgba(255, 255, 255, 0)"
+          penColor="black"
+        />
       </div>
     );
   };
 
-  // Use a reference callback effect
+  // Add a useEffect to handle the signature canvas reference
   useEffect(() => {
-    if (isMounted && document) {
-      // Find the canvas after it's rendered and create a reference to it
-      const canvasElement = document.querySelector('.signature-canvas');
-      if (canvasElement && sigCanvas.current === null) {
-        // Get the component instance - use a type assertion with unknown as intermediate
-        const componentInstance = (canvasElement as unknown as { __reactFiber$?: { return?: { stateNode?: unknown } } }).__reactFiber$?.return?.stateNode;
-        if (componentInstance) {
-          sigCanvas.current = componentInstance as SignatureCanvasRef;
-        }
+    if (isMounted && typeof window !== 'undefined') {
+      const canvas = document.querySelector('.signature-canvas') as unknown as { parentNode?: { children?: any[] } };
+      if (canvas?.parentNode?.children?.[0]) {
+        sigCanvas.current = canvas.parentNode.children[0] as SignatureCanvasRef;
       }
     }
   }, [isMounted]);

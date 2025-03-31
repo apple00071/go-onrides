@@ -1,0 +1,6 @@
+{
+    "require": {
+        "firebase/php-jwt": "^6.0",
+        "ext-sqlite3": "*"
+    }
+} 

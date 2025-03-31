@@ -1,23 +1,29 @@
-# Bike Rental Form Application
+# Go On Riders Vehicle Rental Application
 
-A modern Next.js web application for bike rental companies to digitize their rental process. This application includes a customer information form, digital signature capability, and document upload functionality.
+A modern Next.js web application for Go On Riders to digitize their rental process. This application includes admin and worker portals with authentication, vehicle and customer management, and rental tracking.
 
 ## Features
 
-- **Customer Information Form**: Collects personal details, rental dates, and bike preferences
-- **Digital Signature**: Allows customers to sign the rental agreement digitally
-- **Document Upload**: Lets customers upload their ID or driver's license
-- **Form Validation**: Ensures all required information is provided correctly
+- **Admin Portal**: Complete management of the rental system
+- **Worker Portal**: Day-to-day rental operations and customer management 
+- **User Authentication**: Secure login for admin and staff accounts
 - **Responsive Design**: Works on mobile, tablet, and desktop devices
+
+## Architecture
+
+This application is designed to work with the existing Go On Riders PHP website:
+
+- **Main Website (PHP)**: Served from the root domain `go-onriders.com`
+- **Admin Portal (Next.js)**: Deployed at `admin.go-onriders.com`
+- **Worker Portal (Next.js)**: Deployed at `worker.go-onriders.com`
 
 ## Tech Stack
 
 - [Next.js](https://nextjs.org/) - React framework
 - [TypeScript](https://www.typescriptlang.org/) - Type-safe JavaScript
 - [TailwindCSS](https://tailwindcss.com/) - Utility-first CSS framework
-- [React Hook Form](https://react-hook-form.com/) - Form validation
-- [Zod](https://github.com/colinhacks/zod) - Schema validation
-- [React Signature Canvas](https://github.com/agilgur5/react-signature-canvas) - Digital signature component
+- [SQLite](https://www.sqlite.org/) - Embedded database
+- [JSON Web Tokens](https://jwt.io/) - Authentication
 
 ## Getting Started
 
@@ -30,7 +36,7 @@ A modern Next.js web application for bike rental companies to digitize their ren
 1. Clone the repository
    ```bash
    git clone https://your-repository-url.git
-   cd bike-rental-form
+   cd go-on-riders
    ```
 
 2. Install dependencies
@@ -38,38 +44,44 @@ A modern Next.js web application for bike rental companies to digitize their ren
    npm install
    ```
 
-3. Start the development server
+3. Create a `.env.local` file (use `.env.local.example` as a reference)
+
+4. Start the development server
    ```bash
    npm run dev
    ```
 
-4. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-## Usage
-
-The form collects the following information from customers:
-
-- Personal details (name, email, phone, address)
-- Rental period (start and end dates)
-- Bike type preference
-- Digital signature for the rental agreement
-- ID or driver's license document (for verification)
-
-After submitting the form, in a production environment, the data would be sent to a server for processing and storage.
-
-## Customization
-
-You can customize the form fields, validation rules, and styling based on your specific business needs:
-
-- Modify form fields in `src/components/BikeRentalForm.tsx`
-- Update validation rules in the `formSchema` object
-- Adjust styling using TailwindCSS classes
+5. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 ## Deployment
 
-This application can be easily deployed to Vercel:
+This application is designed to be deployed as subdomains alongside the main PHP website.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yourusername/bike-rental-form)
+### Subdomain Configuration
+
+1. Set up DNS records for:
+   - `admin.go-onriders.com` 
+   - `worker.go-onriders.com`
+
+2. Build the Next.js application:
+   ```bash
+   npm run build
+   ```
+
+3. Deploy using Vercel:
+   ```bash
+   npx vercel --prod
+   ```
+   
+   Or configure your preferred hosting provider to serve from the `out` directory.
+
+4. Configure environment variables on your hosting platform:
+   - `NEXT_PUBLIC_API_URL`: URL to your API (typically `https://go-onriders.com/api`)
+   - `JWT_SECRET`: Your secret key for JWT token generation
+
+### API Configuration
+
+The backend API should be configured with CORS to allow requests from the admin and worker subdomains.
 
 ## License
 
