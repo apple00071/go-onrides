@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
 import { formatDate } from '@/lib/format';
@@ -48,7 +49,7 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
-  const fetchCustomerDetails = async () => {
+  const fetchCustomerDetails = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await fetch(`/api/customers/${id}`);
@@ -71,11 +72,11 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [id]);
   
   useEffect(() => {
     fetchCustomerDetails();
-  }, [id]);
+  }, [fetchCustomerDetails]);
   
   const handleDelete = async () => {
     try {
@@ -256,12 +257,18 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
                   <h3 className="text-lg font-medium text-gray-900">Documents</h3>
                 </div>
                 <div className="mt-4 px-4 sm:px-6">
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {customer.photo_url && (
                       <div>
                         <dt className="text-sm font-medium text-gray-500">Photo</dt>
                         <dd className="mt-1">
-                          <img src={customer.photo_url} alt="Customer" className="h-32 w-32 object-cover rounded-lg" />
+                          <Image
+                            src={customer.photo_url}
+                            alt="Customer photo"
+                            width={300}
+                            height={200}
+                            className="rounded-lg object-cover"
+                          />
                         </dd>
                       </div>
                     )}
@@ -269,7 +276,13 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
                       <div>
                         <dt className="text-sm font-medium text-gray-500">DL Front</dt>
                         <dd className="mt-1">
-                          <img src={customer.dl_front_url} alt="DL Front" className="h-32 w-32 object-cover rounded-lg" />
+                          <Image
+                            src={customer.dl_front_url}
+                            alt="Driver's license front"
+                            width={300}
+                            height={200}
+                            className="rounded-lg object-cover"
+                          />
                         </dd>
                       </div>
                     )}
@@ -277,7 +290,13 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
                       <div>
                         <dt className="text-sm font-medium text-gray-500">DL Back</dt>
                         <dd className="mt-1">
-                          <img src={customer.dl_back_url} alt="DL Back" className="h-32 w-32 object-cover rounded-lg" />
+                          <Image
+                            src={customer.dl_back_url}
+                            alt="Driver's license back"
+                            width={300}
+                            height={200}
+                            className="rounded-lg object-cover"
+                          />
                         </dd>
                       </div>
                     )}
@@ -285,7 +304,13 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
                       <div>
                         <dt className="text-sm font-medium text-gray-500">Aadhar Front</dt>
                         <dd className="mt-1">
-                          <img src={customer.aadhar_front_url} alt="Aadhar Front" className="h-32 w-32 object-cover rounded-lg" />
+                          <Image
+                            src={customer.aadhar_front_url}
+                            alt="Aadhar card front"
+                            width={300}
+                            height={200}
+                            className="rounded-lg object-cover"
+                          />
                         </dd>
                       </div>
                     )}
@@ -293,7 +318,13 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
                       <div>
                         <dt className="text-sm font-medium text-gray-500">Aadhar Back</dt>
                         <dd className="mt-1">
-                          <img src={customer.aadhar_back_url} alt="Aadhar Back" className="h-32 w-32 object-cover rounded-lg" />
+                          <Image
+                            src={customer.aadhar_back_url}
+                            alt="Aadhar card back"
+                            width={300}
+                            height={200}
+                            className="rounded-lg object-cover"
+                          />
                         </dd>
                       </div>
                     )}

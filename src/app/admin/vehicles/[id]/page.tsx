@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
@@ -28,36 +28,40 @@ interface Vehicle {
 }
 
 export default function EditVehiclePage({ params }: VehicleDetailsProps) {
+  const { id } = params;
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  useEffect(() => {
-    fetchVehicle();
-  }, [params.id]);
-
-  const fetchVehicle = async () => {
+  const fetchVehicle = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/vehicles/${params.id}`, {
-        credentials: 'include'
-      });
+      const response = await fetch(`/api/vehicles/${id}`);
       
       if (!response.ok) {
-        throw new Error('Failed to fetch vehicle');
+        throw new Error('Failed to fetch vehicle details');
       }
-
+      
       const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch vehicle details');
+      }
+      
       setVehicle(data.vehicle);
     } catch (err) {
       console.error('Error fetching vehicle:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchVehicle();
+  }, [fetchVehicle]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +69,7 @@ export default function EditVehiclePage({ params }: VehicleDetailsProps) {
 
     try {
       setIsSubmitting(true);
-      const response = await fetch(`/api/vehicles/${params.id}`, {
+      const response = await fetch(`/api/vehicles/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -96,7 +100,7 @@ export default function EditVehiclePage({ params }: VehicleDetailsProps) {
 
     try {
       setIsSubmitting(true);
-      const response = await fetch(`/api/vehicles/${params.id}`, {
+      const response = await fetch(`/api/vehicles/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -106,7 +110,7 @@ export default function EditVehiclePage({ params }: VehicleDetailsProps) {
       if (!response.ok) {
         if (response.status === 400 && data.error?.includes('rental history')) {
           if (confirm('This vehicle has rental history and cannot be deleted. Would you like to mark it as retired instead?')) {
-            const updateResponse = await fetch(`/api/vehicles/${params.id}`, {
+            const updateResponse = await fetch(`/api/vehicles/${id}`, {
               method: 'PATCH',
               headers: {
                 'Content-Type': 'application/json',

@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { formatDate } from '@/lib/format';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
@@ -40,38 +42,42 @@ interface Customer {
 }
 
 export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
+  const { id } = params;
+  const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchCustomerDetails();
-  }, [params.id]);
-
-  const fetchCustomerDetails = async () => {
+  const fetchCustomerDetails = useCallback(async () => {
     try {
-      const response = await fetch(`/api/customers/${params.id}`, {
-        credentials: 'include'
-      });
+      setIsLoading(true);
+      const response = await fetch(`/api/customers/${id}`);
       
       if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Customer not found');
+        }
         throw new Error('Failed to fetch customer details');
       }
-
+      
       const data = await response.json();
-      if (data.success) {
-        setCustomer(data.customer);
-      } else {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to fetch customer details');
       }
+      setCustomer(data.customer);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Error fetching customer:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  };
+  }, [id]);
+  
+  useEffect(() => {
+    fetchCustomerDetails();
+  }, [fetchCustomerDetails]);
 
-  if (loading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner />;
   if (error) return <ErrorAlert message={error} />;
   if (!customer) return <ErrorAlert message="Customer not found" />;
 
@@ -181,21 +187,18 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
             {(customer.photo_url || customer.dl_front_url || customer.dl_back_url || customer.aadhar_front_url || customer.aadhar_back_url) && (
               <div className="sm:col-span-2">
                 <h3 className="text-lg font-medium text-gray-900">Documents</h3>
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {customer.photo_url && (
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Photo</dt>
                       <dd className="mt-1">
-                        <img 
-                        src={customer.photo_url} 
-                        alt="Customer" 
-                        className="h-32 w-32 object-cover rounded-lg" 
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.onerror = null;
-                          target.style.display = 'none';
-                        }}
-                      />
+                        <Image
+                          src={customer.photo_url}
+                          alt="Customer photo"
+                          width={300}
+                          height={200}
+                          className="rounded-lg object-cover"
+                        />
                       </dd>
                     </div>
                   )}
@@ -203,16 +206,13 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
                     <div>
                       <dt className="text-sm font-medium text-gray-500">DL Front</dt>
                       <dd className="mt-1">
-                        <img 
-                        src={customer.dl_front_url} 
-                        alt="DL Front" 
-                        className="h-32 w-32 object-cover rounded-lg" 
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.onerror = null;
-                          target.style.display = 'none';
-                        }}
-                      />
+                        <Image
+                          src={customer.dl_front_url}
+                          alt="Driver's license front"
+                          width={300}
+                          height={200}
+                          className="rounded-lg object-cover"
+                        />
                       </dd>
                     </div>
                   )}
@@ -220,16 +220,13 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
                     <div>
                       <dt className="text-sm font-medium text-gray-500">DL Back</dt>
                       <dd className="mt-1">
-                        <img 
-                        src={customer.dl_back_url} 
-                        alt="DL Back" 
-                        className="h-32 w-32 object-cover rounded-lg" 
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.onerror = null;
-                          target.style.display = 'none';
-                        }}
-                      />
+                        <Image
+                          src={customer.dl_back_url}
+                          alt="Driver's license back"
+                          width={300}
+                          height={200}
+                          className="rounded-lg object-cover"
+                        />
                       </dd>
                     </div>
                   )}
@@ -237,16 +234,13 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Aadhar Front</dt>
                       <dd className="mt-1">
-                        <img 
-                        src={customer.aadhar_front_url} 
-                        alt="Aadhar Front" 
-                        className="h-32 w-32 object-cover rounded-lg" 
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.onerror = null;
-                          target.style.display = 'none';
-                        }}
-                      />
+                        <Image
+                          src={customer.aadhar_front_url}
+                          alt="Aadhar card front"
+                          width={300}
+                          height={200}
+                          className="rounded-lg object-cover"
+                        />
                       </dd>
                     </div>
                   )}
@@ -254,16 +248,13 @@ export default function CustomerDetailsPage({ params }: CustomerDetailsProps) {
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Aadhar Back</dt>
                       <dd className="mt-1">
-                        <img 
-                        src={customer.aadhar_back_url} 
-                        alt="Aadhar Back" 
-                        className="h-32 w-32 object-cover rounded-lg" 
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.onerror = null;
-                          target.style.display = 'none';
-                        }}
-                      />
+                        <Image
+                          src={customer.aadhar_back_url}
+                          alt="Aadhar card back"
+                          width={300}
+                          height={200}
+                          className="rounded-lg object-cover"
+                        />
                       </dd>
                     </div>
                   )}

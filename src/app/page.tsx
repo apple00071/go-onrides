@@ -13,7 +13,7 @@ export default function Home() {
       // In production, redirect to the main PHP site
       window.location.href = 'https://go-onriders.com';
     }
-  }, []);
+  }, [isDevelopment]);
 
   return (
     <div className="min-h-screen flex flex-col">

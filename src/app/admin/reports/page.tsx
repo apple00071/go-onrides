@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
@@ -32,11 +32,7 @@ export default function ReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState('last30days');
 
-  useEffect(() => {
-    fetchReportData();
-  }, [dateRange]);
-
-  const fetchReportData = async () => {
+  const fetchReportData = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await fetch(`/api/reports?range=${dateRange}`, {
@@ -55,7 +51,11 @@ export default function ReportsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [dateRange]);
+
+  useEffect(() => {
+    fetchReportData();
+  }, [fetchReportData]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
@@ -149,41 +149,7 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
 
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
-  useEffect(() => {
-    fetchVehiclesAndCustomers();
-  }, []);
-
-  useEffect(() => {
-    filterCustomers();
-  }, [searchTerm, searchBy, customers]);
-
-  useEffect(() => {
-    if (formData.vehicle_id) {
-      const vehicle = vehicles.find(v => v.id === formData.vehicle_id);
-      setSelectedVehicle(vehicle || null);
-    }
-  }, [formData.vehicle_id, vehicles]);
-
-  const filterCustomers = () => {
-    if (!searchTerm.trim()) {
-      setFilteredCustomers(customers);
-      return;
-    }
-
-    const filtered = customers.filter(customer => {
-      if (searchBy === 'aadhar') {
-        return customer.aadhar_number?.toLowerCase().includes(searchTerm.toLowerCase());
-      } else {
-        const fullName = `${customer.first_name} ${customer.last_name}`.toLowerCase();
-        return fullName.includes(searchTerm.toLowerCase()) || 
-               customer.phone?.includes(searchTerm) ||
-               customer.email?.toLowerCase().includes(searchTerm.toLowerCase());
-      }
-    });
-    setFilteredCustomers(filtered);
-  };
-
-  const fetchVehiclesAndCustomers = async () => {
+  const fetchVehiclesAndCustomers = useCallback(async () => {
     try {
       setIsLoading(true);
       
@@ -212,7 +178,41 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  const filterCustomers = useCallback(() => {
+    if (!searchTerm.trim()) {
+      setFilteredCustomers(customers);
+      return;
+    }
+
+    const filtered = customers.filter(customer => {
+      if (searchBy === 'aadhar') {
+        return customer.aadhar_number?.toLowerCase().includes(searchTerm.toLowerCase());
+      } else {
+        const fullName = `${customer.first_name} ${customer.last_name}`.toLowerCase();
+        return fullName.includes(searchTerm.toLowerCase()) || 
+               customer.phone?.includes(searchTerm) ||
+               customer.email?.toLowerCase().includes(searchTerm.toLowerCase());
+      }
+    });
+    setFilteredCustomers(filtered);
+  }, [searchTerm, searchBy, customers]);
+
+  useEffect(() => {
+    fetchVehiclesAndCustomers();
+  }, [fetchVehiclesAndCustomers]);
+
+  useEffect(() => {
+    filterCustomers();
+  }, [filterCustomers]);
+
+  useEffect(() => {
+    if (formData.vehicle_id) {
+      const vehicle = vehicles.find(v => v.id === formData.vehicle_id);
+      setSelectedVehicle(vehicle || null);
+    }
+  }, [formData.vehicle_id, vehicles]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
