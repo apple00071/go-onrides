@@ -1,224 +1,164 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
+import { dynamic, revalidate } from '../config';
 
-async function getBookings(request: AuthenticatedRequest) {
+async function getRentals(request: AuthenticatedRequest) {
   try {
-    console.log('Fetching bookings...');
-    
-    // Get query parameters
     const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
-    const sort = searchParams.get('sort') || 'created_at';
-    const order = searchParams.get('order') || 'desc';
-    
-    // Fetch bookings with customer and vehicle details
-    const { data: bookings, error } = await supabase
-      .from('bookings')
+    const offset = (page - 1) * limit;
+    const status = searchParams.get('status');
+    const search = searchParams.get('search');
+
+    let query = supabase
+      .from('rentals')
       .select(`
         *,
-        customer:customers (
-          id,
-          first_name,
-          last_name,
-          phone
-        ),
-        vehicle:vehicles (
-          id,
-          model,
-          type,
-          number_plate
-        )
-      `)
-      .order(sort, { ascending: order === 'asc' })
-      .limit(limit);
+        customer:customers(first_name, last_name, phone),
+        vehicle:vehicles(model, number_plate),
+        worker:users(full_name)
+      `, { count: 'exact' })
+      .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching bookings:', error);
-      throw error;
+    // Apply filters
+    if (status) {
+      query = query.eq('status', status);
     }
 
-    // Transform the data to match the expected format
-    const transformedBookings = bookings?.map(booking => ({
-      id: booking.id.toString(),
-      booking_id: booking.booking_id,
-      customer_id: booking.customer_id.toString(),
-      vehicle_id: booking.vehicle_id.toString(),
-      customer_name: booking.customer ? 
-        `${booking.customer.first_name} ${booking.customer.last_name}`.trim() : 
-        'Unknown Customer',
-      vehicle_model: booking.vehicle?.model || 'Unknown Vehicle',
-      vehicle_type: booking.vehicle?.type || 'Unknown Type',
-      vehicle_number: booking.vehicle?.number_plate || 'No Plate',
-      start_date: booking.start_date,
-      end_date: booking.end_date,
-      status: booking.status,
-      amount: booking.total_amount || 0,
-      payment_status: booking.payment_status
-    })) || [];
+    if (search) {
+      query = query.or(`
+        customer.first_name.ilike.%${search}%,
+        customer.last_name.ilike.%${search}%,
+        customer.phone.ilike.%${search}%,
+        vehicle.model.ilike.%${search}%,
+        vehicle.number_plate.ilike.%${search}%,
+        rental_id.ilike.%${search}%
+      `);
+    }
+
+    // Apply pagination
+    const { data: rentals, error, count } = await query.range(offset, offset + limit - 1);
+
+    if (error) {
+      console.error('Error fetching rentals:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch rentals' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      bookings: transformedBookings
+      data: {
+        rentals: rentals?.map(rental => ({
+          id: rental.id,
+          rental_id: rental.rental_id,
+          customer_name: `${rental.customer.first_name} ${rental.customer.last_name}`,
+          customer_phone: rental.customer.phone,
+          vehicle: `${rental.vehicle.model} (${rental.vehicle.number_plate})`,
+          worker_name: rental.worker.full_name,
+          start_date: rental.start_date,
+          end_date: rental.end_date,
+          status: rental.status,
+          total_amount: rental.total_amount,
+          payment_status: rental.payment_status,
+          created_at: rental.created_at
+        })) || [],
+        pagination: {
+          total: count || 0,
+          page,
+          limit,
+          totalPages: Math.ceil((count || 0) / limit)
+        }
+      }
     });
   } catch (error) {
-    console.error('Error in bookings endpoint:', error);
+    console.error('Error in rentals endpoint:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Failed to fetch bookings',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
 }
 
-async function createBooking(request: AuthenticatedRequest) {
-  if (!request.user) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 401 }
-    );
-  }
-
+async function createRental(request: AuthenticatedRequest) {
   try {
-    const data = await request.json();
-    console.log('Creating booking with data:', data);
+    const body = await request.json();
+    const {
+      customer_id,
+      vehicle_id,
+      start_date,
+      end_date,
+      total_amount,
+      document_path,
+      signature_path,
+      customer_photo_path,
+      notes
+    } = body;
 
-    // Validate required fields
-    if (!data.vehicle_id || !data.customer_id || !data.start_date || !data.end_date) {
+    if (!customer_id || !vehicle_id || !start_date || !end_date || !total_amount) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields' },
+        { error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    // Convert vehicle_id to number and validate
-    const vehicleId = typeof data.vehicle_id === 'string' ? parseInt(data.vehicle_id, 10) : data.vehicle_id;
-    if (isNaN(vehicleId)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid vehicle ID format' },
-        { status: 400 }
-      );
-    }
+    // Generate rental ID
+    const rentalId = `RNT${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
-    // Check if vehicle exists and is available
-    console.log('Checking vehicle with ID:', vehicleId);
-    const { data: vehicle, error: vehicleError } = await supabase
-      .from('vehicles')
-      .select('*')
-      .eq('id', vehicleId)
-      .single();
-
-    console.log('Found vehicle:', vehicle);
-    console.log('Vehicle query error:', vehicleError);
-
-    if (vehicleError || !vehicle) {
-      console.error('Error checking vehicle:', vehicleError);
-      return NextResponse.json(
-        { success: false, error: 'Vehicle not found' },
-        { status: 404 }
-      );
-    }
-
-    if (vehicle.status !== 'available') {
-      return NextResponse.json(
-        { success: false, error: 'Selected vehicle is not available' },
-        { status: 400 }
-      );
-    }
-
-    // Convert customer_id to number and validate
-    const customerId = typeof data.customer_id === 'string' ? parseInt(data.customer_id, 10) : data.customer_id;
-    if (isNaN(customerId)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid customer ID format' },
-        { status: 400 }
-      );
-    }
-
-    // Check if customer exists
-    console.log('Checking customer with ID:', customerId);
-    const { data: customer, error: customerError } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('id', customerId)
-      .single();
-
-    console.log('Found customer:', customer);
-    console.log('Customer query error:', customerError);
-
-    if (customerError || !customer) {
-      console.error('Error checking customer:', customerError);
-      return NextResponse.json(
-        { success: false, error: 'Customer not found' },
-        { status: 404 }
-      );
-    }
-
-    // Create new booking
-    const { data: booking, error: bookingError } = await supabase
-      .from('bookings')
+    // Create rental record
+    const { data: rental, error } = await supabase
+      .from('rentals')
       .insert({
-        customer_id: customerId,
-        vehicle_id: vehicleId,
-        worker_id: request.user.id,
-        start_date: data.start_date,
-        end_date: data.end_date,
+        rental_id: rentalId,
+        customer_id,
+        vehicle_id,
+        worker_id: request.user?.id,
+        start_date,
+        end_date,
         status: 'active',
-        base_price: data.base_price,
-        additional_charges: data.additional_charges || 0,
-        discount: data.discount || 0,
-        total_amount: parseFloat(data.base_price) + 
-                     parseFloat(data.additional_charges || '0') - 
-                     parseFloat(data.discount || '0'),
-        payment_status: 'pending'
+        total_amount,
+        payment_status: 'pending',
+        document_path,
+        signature_path,
+        customer_photo_path,
+        notes
       })
       .select()
       .single();
 
-    if (bookingError) {
-      console.error('Error creating booking:', bookingError);
-      throw bookingError;
+    if (error) {
+      console.error('Error creating rental:', error);
+      return NextResponse.json(
+        { error: 'Failed to create rental' },
+        { status: 500 }
+      );
     }
 
-    console.log('Created booking:', booking);
-
-    // Update vehicle status to 'rented'
-    const { error: updateError } = await supabase
+    // Update vehicle status
+    await supabase
       .from('vehicles')
-      .update({ status: 'rented' })
-      .eq('id', vehicleId);
+      .update({
+        status: 'rented',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', vehicle_id);
 
-    if (updateError) {
-      console.error('Error updating vehicle status:', updateError);
-      // Don't throw here, as the booking was created successfully
-    }
-
-    // Return the booking with properly formatted ID
     return NextResponse.json({
       success: true,
-      booking: {
-        ...booking,
-        id: booking.id.toString(),
-        customer_id: booking.customer_id.toString(),
-        vehicle_id: booking.vehicle_id.toString(),
-        worker_id: booking.worker_id.toString()
-      }
+      data: rental
     });
   } catch (error) {
-    console.error('Error in create booking:', error);
+    console.error('Error in create rental endpoint:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to create booking'
-      },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
 }
 
-export const GET = withAuth(getBookings);
-export const POST = withAuth(createBooking); 
+export const GET = withAuth(getRentals);
+export const POST = withAuth(createRental); 

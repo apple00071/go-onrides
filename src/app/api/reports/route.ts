@@ -1,114 +1,89 @@
 import { NextResponse } from 'next/server';
-import { getDB } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
 import { dynamic, revalidate } from '../config';
 
-async function getReports(request: AuthenticatedRequest) {
+async function handler(request: AuthenticatedRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const range = searchParams.get('range') || 'last30days';
-    
-    const db = await getDB();
-    let dateFilter = '';
-    
-    // Create date filter based on range
-    const now = new Date();
-    switch (range) {
-      case 'today':
-        const today = new Date().toISOString().split('T')[0];
-        dateFilter = `date(r.created_at) = '${today}'`;
-        break;
-      case 'last7days':
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        dateFilter = `date(r.created_at) >= '${weekAgo}'`;
-        break;
-      case 'last30days':
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        dateFilter = `date(r.created_at) >= '${monthAgo}'`;
-        break;
-      case 'thisMonth':
-        dateFilter = `strftime('%Y-%m', r.created_at) = strftime('%Y-%m', 'now')`;
-        break;
-      case 'lastMonth':
-        dateFilter = `strftime('%Y-%m', r.created_at) = strftime('%Y-%m', 'now', '-1 month')`;
-        break;
-      case 'thisYear':
-        dateFilter = `strftime('%Y', r.created_at) = strftime('%Y', 'now')`;
-        break;
-      default:
-        dateFilter = '';
+    const startDate = searchParams.get('start_date');
+    const endDate = searchParams.get('end_date');
+
+    if (!startDate || !endDate) {
+      return NextResponse.json(
+        { error: 'Start date and end date are required' },
+        { status: 400 }
+      );
     }
 
-    // Get total bookings and their statuses
-    const bookingsQuery = `
-      SELECT 
-        COUNT(*) as total_bookings,
-        COUNT(CASE WHEN status = 'active' THEN 1 END) as active_bookings,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_bookings,
-        COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled_bookings
-      FROM rentals r
-      ${dateFilter ? `WHERE ${dateFilter}` : ''}
-    `;
-    const bookingsResult = await db.get(bookingsQuery);
+    // Get rental statistics
+    const { data: rentals, error: rentalsError } = await supabase
+      .from('rentals')
+      .select(`
+        *,
+        customer:customers(first_name, last_name),
+        vehicle:vehicles(model, number_plate)
+      `)
+      .gte('created_at', startDate)
+      .lte('created_at', endDate);
 
-    // Get vehicle utilization
-    const vehicleUtilizationQuery = `
-      SELECT 
-        COUNT(*) as total,
-        COUNT(CASE WHEN status = 'rented' THEN 1 END) as rented,
-        COUNT(CASE WHEN status = 'available' THEN 1 END) as available,
-        COUNT(CASE WHEN status = 'maintenance' THEN 1 END) as maintenance
-      FROM vehicles
-    `;
-    const vehicleUtilization = await db.get(vehicleUtilizationQuery);
+    if (rentalsError) {
+      console.error('Error fetching rentals:', rentalsError);
+      return NextResponse.json(
+        { error: 'Failed to fetch rental data' },
+        { status: 500 }
+      );
+    }
 
-    // Get revenue by vehicle type
-    const revenueByTypeQuery = `
-      SELECT 
-        v.type,
-        SUM(r.total_amount) as revenue
-      FROM rentals r
-      JOIN vehicles v ON r.vehicle_id = v.id
-      ${dateFilter ? `WHERE ${dateFilter}` : ''}
-      GROUP BY v.type
-    `;
-    const revenueByTypeResult = await db.all(revenueByTypeQuery);
-    const revenueByVehicleType = revenueByTypeResult.reduce((acc: any, curr: any) => {
-      acc[curr.type] = curr.revenue || 0;
-      return acc;
-    }, {});
+    // Get payment statistics
+    const { data: payments, error: paymentsError } = await supabase
+      .from('payments')
+      .select('*')
+      .gte('created_at', startDate)
+      .lte('created_at', endDate);
 
-    // Get monthly revenue
-    const monthlyRevenueQuery = `
-      SELECT 
-        strftime('%Y-%m', r.created_at) as month,
-        SUM(r.total_amount) as revenue
-      FROM rentals r
-      GROUP BY strftime('%Y-%m', r.created_at)
-      ORDER BY month DESC
-      LIMIT 12
-    `;
-    const monthlyRevenue = await db.all(monthlyRevenueQuery);
+    if (paymentsError) {
+      console.error('Error fetching payments:', paymentsError);
+      return NextResponse.json(
+        { error: 'Failed to fetch payment data' },
+        { status: 500 }
+      );
+    }
 
-    // Calculate total revenue
-    const totalRevenue = Object.values(revenueByVehicleType).reduce((a: any, b: any) => a + b, 0);
+    // Calculate statistics
+    const totalRentals = rentals?.length || 0;
+    const totalRevenue = payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+    const activeRentals = rentals?.filter(r => r.status === 'active').length || 0;
+    const completedRentals = rentals?.filter(r => r.status === 'completed').length || 0;
+    const cancelledRentals = rentals?.filter(r => r.status === 'cancelled').length || 0;
 
-    const reportData = {
-      totalRevenue,
-      totalBookings: bookingsResult.total_bookings,
-      activeBookings: bookingsResult.active_bookings,
-      completedBookings: bookingsResult.completed_bookings,
-      cancelledBookings: bookingsResult.cancelled_bookings,
-      vehicleUtilization,
-      revenueByVehicleType,
-      monthlyRevenue: monthlyRevenue.map(r => ({
-        month: r.month,
-        revenue: r.revenue || 0
-      }))
-    };
+    // Format rental data
+    const rentalData = rentals?.map(rental => ({
+      id: rental.id,
+      rental_id: rental.rental_id,
+      customer_name: `${rental.customer.first_name} ${rental.customer.last_name}`,
+      vehicle: `${rental.vehicle.model} (${rental.vehicle.number_plate})`,
+      start_date: rental.start_date,
+      end_date: rental.end_date,
+      status: rental.status,
+      total_amount: rental.total_amount,
+      payment_status: rental.payment_status
+    })) || [];
 
-    return NextResponse.json(reportData);
+    return NextResponse.json({
+      success: true,
+      data: {
+        summary: {
+          totalRentals,
+          totalRevenue,
+          activeRentals,
+          completedRentals,
+          cancelledRentals
+        },
+        rentals: rentalData
+      }
+    });
   } catch (error) {
     console.error('Error generating report:', error);
     return NextResponse.json(
@@ -118,4 +93,4 @@ async function getReports(request: AuthenticatedRequest) {
   }
 }
 
-export const GET = withAuth(getReports); 
+export const GET = withAuth(handler); 

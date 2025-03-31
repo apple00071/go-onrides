@@ -1,79 +1,84 @@
 import { NextResponse } from 'next/server';
-import { supabase, TABLES } from '@/lib/supabase';
+import { supabase } from '@/lib/db';
 import { withRoleCheck } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
 import { dynamic, revalidate } from '../../../config';
 
-async function handler(req: AuthenticatedRequest) {
+async function handler(request: AuthenticatedRequest) {
   try {
-    // Get period from query parameters
-    const { searchParams } = new URL(req.url);
-    const period = searchParams.get('period') || 'week';
-    
-    let dateFilter = '';
-    
-    // Create date filter based on period
-    const now = new Date();
-    switch (period) {
-      case 'day':
-        dateFilter = `created_at >= NOW() - INTERVAL '1 day'`;
-        break;
-      case 'week':
-        dateFilter = `created_at >= NOW() - INTERVAL '7 days'`;
-        break;
-      case 'month':
-        dateFilter = `created_at >= NOW() - INTERVAL '30 days'`;
-        break;
-      default:
-        dateFilter = '';
+    const workerId = request.user?.id;
+
+    if (!workerId) {
+      return NextResponse.json(
+        { error: 'Worker ID not found in request' },
+        { status: 400 }
+      );
     }
 
-    // Get total rentals and revenue stats
-    const { data: rentalStats, error: rentalError } = await supabase
-      .from('bookings')
-      .select('status, total_amount')
-      .eq('status', 'active');
+    // Get today's rentals handled by the worker
+    const today = new Date().toISOString().split('T')[0];
+    const { data: todayRentals } = await supabase
+      .from('rentals')
+      .select('*')
+      .eq('worker_id', workerId)
+      .gte('created_at', today);
 
-    if (rentalError) throw rentalError;
+    // Get active rentals assigned to the worker
+    const { data: activeRentals } = await supabase
+      .from('rentals')
+      .select(`
+        *,
+        customer:customers(first_name, last_name),
+        vehicle:vehicles(model, number_plate)
+      `)
+      .eq('worker_id', workerId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
 
-    // Get vehicle stats
-    const { data: vehicleStats, error: vehicleError } = await supabase
-      .from('vehicles')
-      .select('status');
+    // Get today's payments collected by the worker
+    const { data: todayPayments } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('received_by', workerId)
+      .gte('created_at', today);
 
-    if (vehicleError) throw vehicleError;
+    const todayRevenue = todayPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
 
-    // Get customer count
-    const { count: customerCount, error: customerError } = await supabase
-      .from('customers')
-      .select('*', { count: 'exact', head: true });
-
-    if (customerError) throw customerError;
-
-    // Calculate stats
-    const stats = {
-      totalBookings: rentalStats?.length || 0,
-      activeBookings: rentalStats?.filter(r => r.status === 'active').length || 0,
-      totalRevenue: rentalStats?.reduce((sum, r) => sum + (r.total_amount || 0), 0) || 0,
-      pendingPayments: 0, // We'll implement this later with proper payment status tracking
-      availableVehicles: vehicleStats?.filter(v => v.status === 'available').length || 0,
-      maintenanceVehicles: vehicleStats?.filter(v => v.status === 'maintenance').length || 0,
-      totalCustomers: customerCount || 0,
-      overdueBookings: 0 // We'll implement this later with proper date comparison
-    };
+    // Get recent rentals handled by the worker
+    const { data: recentRentals } = await supabase
+      .from('rentals')
+      .select(`
+        *,
+        customer:customers(first_name, last_name),
+        vehicle:vehicles(model, number_plate)
+      `)
+      .eq('worker_id', workerId)
+      .order('created_at', { ascending: false })
+      .limit(5);
 
     return NextResponse.json({
       success: true,
-      data: stats
+      data: {
+        todayRentals: todayRentals?.length || 0,
+        activeRentals: activeRentals?.length || 0,
+        todayRevenue,
+        recentRentals: recentRentals?.map(rental => ({
+          id: rental.id,
+          rental_id: rental.rental_id,
+          customer_name: `${rental.customer.first_name} ${rental.customer.last_name}`,
+          vehicle: `${rental.vehicle.model} (${rental.vehicle.number_plate})`,
+          start_date: rental.start_date,
+          end_date: rental.end_date,
+          status: rental.status,
+          amount: rental.total_amount,
+          payment_status: rental.payment_status
+        })) || []
+      }
     });
   } catch (error) {
-    console.error('Error fetching dashboard stats:', error);
+    console.error('Error fetching worker dashboard stats:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Failed to fetch dashboard statistics',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Failed to fetch dashboard statistics' },
       { status: 500 }
     );
   }

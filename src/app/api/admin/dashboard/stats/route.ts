@@ -1,80 +1,91 @@
 import { NextResponse } from 'next/server';
-import { supabase, TABLES } from '@/lib/supabase';
+import { supabase } from '@/lib/db';
 import { withRoleCheck } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
 import { dynamic, revalidate } from '../../../config';
 
-async function handler(req: AuthenticatedRequest) {
+async function handler(request: AuthenticatedRequest) {
   try {
-    // Get period from query parameters
-    const { searchParams } = new URL(req.url);
-    const period = searchParams.get('period') || 'week';
-    
-    let dateFilter = '';
-    
-    // Create date filter based on period
-    const now = new Date();
-    switch (period) {
-      case 'day':
-        dateFilter = `created_at >= NOW() - INTERVAL '1 day'`;
-        break;
-      case 'week':
-        dateFilter = `created_at >= NOW() - INTERVAL '7 days'`;
-        break;
-      case 'month':
-        dateFilter = `created_at >= NOW() - INTERVAL '30 days'`;
-        break;
-      default:
-        dateFilter = '';
-    }
-
-    // Get total rentals and revenue stats
-    const { data: rentalStats, error: rentalError } = await supabase
-      .from(TABLES.BOOKINGS)
-      .select('status, total_amount, payment_status')
-      .eq('status', 'active');
-
-    if (rentalError) throw rentalError;
-
-    // Get vehicle stats
-    const { data: vehicleStats, error: vehicleError } = await supabase
-      .from(TABLES.VEHICLES)
-      .select('status');
-
-    if (vehicleError) throw vehicleError;
-
-    // Get customer count
-    const { count: customerCount, error: customerError } = await supabase
-      .from(TABLES.CUSTOMERS)
+    // Get total customers count
+    const { count: totalCustomers } = await supabase
+      .from('customers')
       .select('*', { count: 'exact', head: true });
 
-    if (customerError) throw customerError;
+    // Get total vehicles count
+    const { count: totalVehicles } = await supabase
+      .from('vehicles')
+      .select('*', { count: 'exact', head: true });
 
-    // Calculate stats
-    const stats = {
-      totalBookings: rentalStats?.length || 0,
-      activeBookings: rentalStats?.filter(r => r.status === 'active').length || 0,
-      totalRevenue: rentalStats?.reduce((sum, r) => sum + (r.total_amount || 0), 0) || 0,
-      pendingPayments: rentalStats?.filter(r => r.payment_status === 'pending')
-        .reduce((sum, r) => sum + (r.total_amount || 0), 0) || 0,
-      availableVehicles: vehicleStats?.filter(v => v.status === 'available').length || 0,
-      maintenanceVehicles: vehicleStats?.filter(v => v.status === 'maintenance').length || 0,
-      totalCustomers: customerCount || 0,
-      overdueBookings: rentalStats?.filter(r => r.status === 'overdue').length || 0
-    };
+    // Get active rentals count
+    const { count: activeRentals } = await supabase
+      .from('rentals')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active');
+
+    // Get today's revenue
+    const today = new Date().toISOString().split('T')[0];
+    const { data: todayPayments } = await supabase
+      .from('payments')
+      .select('amount')
+      .gte('created_at', today);
+
+    const todayRevenue = todayPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+
+    // Get recent rentals
+    const { data: recentRentals } = await supabase
+      .from('rentals')
+      .select(`
+        *,
+        customer:customers(first_name, last_name),
+        vehicle:vehicles(model, number_plate)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    // Get recent payments
+    const { data: recentPayments } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        rental:rentals(rental_id),
+        customer:customers(first_name, last_name)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(5);
 
     return NextResponse.json({
       success: true,
-      data: stats
+      data: {
+        totalCustomers: totalCustomers || 0,
+        totalVehicles: totalVehicles || 0,
+        activeRentals: activeRentals || 0,
+        todayRevenue,
+        recentRentals: recentRentals?.map(rental => ({
+          id: rental.id,
+          rental_id: rental.rental_id,
+          customer_name: `${rental.customer.first_name} ${rental.customer.last_name}`,
+          vehicle: `${rental.vehicle.model} (${rental.vehicle.number_plate})`,
+          start_date: rental.start_date,
+          end_date: rental.end_date,
+          status: rental.status,
+          amount: rental.total_amount,
+          payment_status: rental.payment_status
+        })) || [],
+        recentPayments: recentPayments?.map(payment => ({
+          id: payment.id,
+          rental_id: payment.rental?.rental_id,
+          customer_name: `${payment.customer.first_name} ${payment.customer.last_name}`,
+          amount: payment.amount,
+          method: payment.method,
+          status: payment.status,
+          created_at: payment.created_at
+        })) || []
+      }
     });
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Failed to fetch dashboard statistics',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Failed to fetch dashboard statistics' },
       { status: 500 }
     );
   }

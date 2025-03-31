@@ -1,59 +1,52 @@
 import { NextResponse } from 'next/server';
-import { getDB } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
 import { dynamic, revalidate } from '../../config';
 
 async function handler(request: AuthenticatedRequest) {
   try {
-    if (!request.user) {
+    const userId = request.user?.id;
+
+    if (!userId) {
       return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Unauthorized' 
-        },
-        { status: 401 }
+        { error: 'User ID not found in request' },
+        { status: 400 }
       );
     }
 
-    // User is already authenticated and available in request.user
-    // Optionally fetch additional user data from the database
-    if (request.user.id) {
-      const db = await getDB();
-      const userData = await db.get(
-        `SELECT u.id, u.email, u.full_name, u.role, u.status, u.created_at, u.last_login_at_at_at_at,
-                u.permissions
-         FROM users u
-         WHERE u.id = ?`,
-        [request.user.id]
-      );
+    // Get user from Supabase
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, username, email, full_name, role, status, created_at, last_login_at, permissions')
+      .eq('id', userId)
+      .single();
 
-      if (userData) {
-        // Parse permissions from string to array if it exists
-        const permissions = userData.permissions ? JSON.parse(userData.permissions) : [];
-        
-        return NextResponse.json({
-          success: true,
-          data: {
-            ...userData,
-            permissions
-          }
-        });
-      }
+    if (error) {
+      console.error('Error fetching user:', error);
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
     }
 
-    // Fallback to just returning the user from the token
     return NextResponse.json({
-      success: true,
-      data: request.user
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        status: user.status,
+        created_at: user.created_at,
+        last_login_at: user.last_login_at,
+        permissions: user.permissions
+      }
     });
   } catch (error) {
     console.error('Error in /api/auth/me:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Internal server error'
-      },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
