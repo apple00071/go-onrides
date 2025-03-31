@@ -1,13 +1,6 @@
-import { cookies } from "next/headers";
-
 export async function fetchCustomerDetails(id: string) {
-  const cookieStore = cookies();
-  const token = cookieStore.get("token")?.value;
-
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/customers/${id}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+  const response = await fetch(`/api/customers/${id}`, {
+    credentials: 'include'
   });
 
   if (!response.ok) {
@@ -18,13 +11,8 @@ export async function fetchCustomerDetails(id: string) {
 }
 
 export async function fetchUserDetails(id: string) {
-  const cookieStore = cookies();
-  const token = cookieStore.get("token")?.value;
-
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/${id}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+  const response = await fetch(`/api/users/${id}`, {
+    credentials: 'include'
   });
 
   if (!response.ok) {
@@ -35,13 +23,8 @@ export async function fetchUserDetails(id: string) {
 }
 
 export async function fetchReport(id: string) {
-  const cookieStore = cookies();
-  const token = cookieStore.get("token")?.value;
-
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports/${id}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+  const response = await fetch(`/api/reports/${id}`, {
+    credentials: 'include'
   });
 
   if (!response.ok) {
