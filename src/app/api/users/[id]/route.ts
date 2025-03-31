@@ -24,34 +24,38 @@ async function getUser(request: AuthenticatedRequest, { params }: { params: { id
       );
     }
 
-    // Get user activity stats
-    const { data: rentals } = await supabase
-      .from('rentals')
-      .select('status')
+    // Get user's bookings
+    const { data: bookings } = await supabase
+      .from('bookings')
+      .select('*')
       .eq('worker_id', params.id);
 
+    // Get user's payments
     const { data: payments } = await supabase
       .from('payments')
-      .select('id')
+      .select('*')
       .eq('received_by', params.id);
 
+    // Get user's maintenance records
     const { data: maintenance } = await supabase
-      .from('maintenance_records')
-      .select('id')
-      .eq('performed_by', params.id);
+      .from('maintenance')
+      .select('*')
+      .eq('worker_id', params.id);
 
-    const activity = {
-      totalActions: (rentals?.length || 0) + (payments?.length || 0) + (maintenance?.length || 0),
-      rentalsCreated: rentals?.length || 0,
-      rentalsCompleted: rentals?.filter(r => r.status === 'completed').length || 0,
-      paymentsProcessed: payments?.length || 0,
+    // Calculate activity metrics
+    const stats = {
+      totalActions: (bookings?.length || 0) + (payments?.length || 0) + (maintenance?.length || 0),
+      bookingsCreated: bookings?.length || 0,
+      bookingsCompleted: bookings?.filter(r => r.status === 'completed').length || 0,
+      paymentsReceived: payments?.length || 0,
+      paymentsAmount: payments?.reduce((sum, p) => sum + p.amount, 0) || 0,
       maintenanceRecords: maintenance?.length || 0
     };
 
     return NextResponse.json({
       user: {
         ...user,
-        activity
+        stats
       }
     });
   } catch (error) {

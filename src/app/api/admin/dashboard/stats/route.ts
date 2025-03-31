@@ -16,9 +16,9 @@ async function handler(request: AuthenticatedRequest) {
       .from('vehicles')
       .select('*', { count: 'exact', head: true });
 
-    // Get active rentals count
-    const { count: activeRentals } = await supabase
-      .from('rentals')
+    // Get active bookings count
+    const { count: activeBookings } = await supabase
+      .from('bookings')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'active');
 
@@ -31,9 +31,9 @@ async function handler(request: AuthenticatedRequest) {
 
     const todayRevenue = todayPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
 
-    // Get recent rentals
-    const { data: recentRentals } = await supabase
-      .from('rentals')
+    // Get recent bookings
+    const { data: recentBookings } = await supabase
+      .from('bookings')
       .select(`
         *,
         customer:customers(first_name, last_name),
@@ -47,7 +47,7 @@ async function handler(request: AuthenticatedRequest) {
       .from('payments')
       .select(`
         *,
-        rental:rentals(rental_id),
+        booking:bookings(booking_id),
         customer:customers(first_name, last_name)
       `)
       .order('created_at', { ascending: false })
@@ -58,22 +58,22 @@ async function handler(request: AuthenticatedRequest) {
       data: {
         totalCustomers: totalCustomers || 0,
         totalVehicles: totalVehicles || 0,
-        activeRentals: activeRentals || 0,
+        activeBookings: activeBookings || 0,
         todayRevenue,
-        recentRentals: recentRentals?.map(rental => ({
-          id: rental.id,
-          rental_id: rental.rental_id,
-          customer_name: `${rental.customer.first_name} ${rental.customer.last_name}`,
-          vehicle: `${rental.vehicle.model} (${rental.vehicle.number_plate})`,
-          start_date: rental.start_date,
-          end_date: rental.end_date,
-          status: rental.status,
-          amount: rental.total_amount,
-          payment_status: rental.payment_status
+        recentBookings: recentBookings?.map(booking => ({
+          id: booking.id,
+          booking_id: booking.booking_id,
+          customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
+          vehicle: `${booking.vehicle.model} (${booking.vehicle.number_plate})`,
+          start_date: booking.start_date,
+          end_date: booking.end_date,
+          status: booking.status,
+          amount: booking.total_amount,
+          payment_status: booking.payment_status
         })) || [],
         recentPayments: recentPayments?.map(payment => ({
           id: payment.id,
-          rental_id: payment.rental?.rental_id,
+          booking_id: payment.booking?.booking_id,
           customer_name: `${payment.customer.first_name} ${payment.customer.last_name}`,
           amount: payment.amount,
           method: payment.method,

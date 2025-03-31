@@ -23,10 +23,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Check if the user is authenticated when the component mounts
   useEffect(() => {
     const initAuth = async () => {
-      setLoading(true);
       await checkAuth();
       setLoading(false);
     };
@@ -44,19 +42,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
         credentials: 'include',
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          setUser(result.data);
-          return true;
-        } else {
-          setUser(null);
-          return false;
-        }
-      } else {
+      if (!response.ok) {
         setUser(null);
         return false;
       }
+
+      const result = await response.json();
+      if (result.user) {
+        setUser(result.user);
+        return true;
+      }
+
+      setUser(null);
+      return false;
     } catch (error) {
       console.error('Error checking authentication:', error);
       setUser(null);
@@ -80,18 +78,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const result = await response.json();
 
-      if (response.ok && result.success) {
-        setUser(result.data);
+      if (response.ok) {
+        // The API returns user data directly in the response
+        const userData: User = {
+          id: result.user.id,
+          email: result.user.email,
+          username: result.user.username,
+          full_name: result.user.full_name,
+          role: result.user.role,
+          status: result.user.status,
+          permissions: result.user.permissions || [],
+          created_at: result.user.created_at,
+          last_login_at: result.user.last_login_at,
+          phone: result.user.phone || null
+        };
+        
+        setUser(userData);
         return { 
           success: true,
-          data: result.data
-        };
-      } else {
-        return {
-          success: false,
-          message: result.message || 'Login failed. Please check your credentials.',
+          data: userData
         };
       }
+
+      return {
+        success: false,
+        message: result.error || 'Login failed. Please check your credentials.',
+      };
     } catch (error) {
       console.error('Login error:', error);
       return {
@@ -103,16 +115,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const logout = async (): Promise<void> => {
     try {
-      await fetch('/api/auth/logout', {
+      const response = await fetch('/api/auth/logout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
       });
-      
-      setUser(null);
-      router.push('/login');
+
+      if (response.ok) {
+        setUser(null);
+        router.replace('/login');
+      }
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -125,6 +139,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     logout,
     checkAuth,
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import * as jose from 'jose';
 import { User, AuthenticatedRequest } from '@/types';
-import { getDB } from './db';
 import { jwtVerify } from 'jose';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const COOKIE_NAME = 'authToken';
+const COOKIE_NAME = 'token';
 
 /**
  * Middleware for protecting API routes - verifies JWT token and attaches user to request

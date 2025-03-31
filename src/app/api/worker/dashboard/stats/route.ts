@@ -15,17 +15,17 @@ async function handler(request: AuthenticatedRequest) {
       );
     }
 
-    // Get today's rentals handled by the worker
+    // Get today's bookings handled by the worker
     const today = new Date().toISOString().split('T')[0];
-    const { data: todayRentals } = await supabase
-      .from('rentals')
+    const { data: todayBookings } = await supabase
+      .from('bookings')
       .select('*')
       .eq('worker_id', workerId)
       .gte('created_at', today);
 
-    // Get active rentals assigned to the worker
-    const { data: activeRentals } = await supabase
-      .from('rentals')
+    // Get active bookings assigned to the worker
+    const { data: activeBookings } = await supabase
+      .from('bookings')
       .select(`
         *,
         customer:customers(first_name, last_name),
@@ -44,9 +44,9 @@ async function handler(request: AuthenticatedRequest) {
 
     const todayRevenue = todayPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
 
-    // Get recent rentals handled by the worker
-    const { data: recentRentals } = await supabase
-      .from('rentals')
+    // Get recent bookings handled by the worker
+    const { data: recentBookings } = await supabase
+      .from('bookings')
       .select(`
         *,
         customer:customers(first_name, last_name),
@@ -59,19 +59,19 @@ async function handler(request: AuthenticatedRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        todayRentals: todayRentals?.length || 0,
-        activeRentals: activeRentals?.length || 0,
+        todayBookings: todayBookings?.length || 0,
+        activeBookings: activeBookings?.length || 0,
         todayRevenue,
-        recentRentals: recentRentals?.map(rental => ({
-          id: rental.id,
-          rental_id: rental.rental_id,
-          customer_name: `${rental.customer.first_name} ${rental.customer.last_name}`,
-          vehicle: `${rental.vehicle.model} (${rental.vehicle.number_plate})`,
-          start_date: rental.start_date,
-          end_date: rental.end_date,
-          status: rental.status,
-          amount: rental.total_amount,
-          payment_status: rental.payment_status
+        recentBookings: recentBookings?.map(booking => ({
+          id: booking.id,
+          booking_id: booking.booking_id,
+          customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
+          vehicle: `${booking.vehicle.model} (${booking.vehicle.number_plate})`,
+          start_date: booking.start_date,
+          end_date: booking.end_date,
+          status: booking.status,
+          amount: booking.total_amount,
+          payment_status: booking.payment_status
         })) || []
       }
     });

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { withAuth } from '@/lib/auth';
+import { withRoleCheck } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
 import { dynamic, revalidate } from '../config';
 
@@ -17,9 +17,19 @@ async function handler(request: AuthenticatedRequest) {
       );
     }
 
-    // Get rental statistics
-    const { data: rentals, error: rentalsError } = await supabase
-      .from('rentals')
+    // Get total customers
+    const { data: customers, error: customerError } = await supabase
+      .from('customers')
+      .select('*');
+
+    if (customerError) {
+      console.error('Error fetching customers:', customerError);
+      throw customerError;
+    }
+
+    // Get total bookings
+    const { data: bookings, error: bookingsError } = await supabase
+      .from('bookings')
       .select(`
         *,
         customer:customers(first_name, last_name),
@@ -28,15 +38,12 @@ async function handler(request: AuthenticatedRequest) {
       .gte('created_at', startDate)
       .lte('created_at', endDate);
 
-    if (rentalsError) {
-      console.error('Error fetching rentals:', rentalsError);
-      return NextResponse.json(
-        { error: 'Failed to fetch rental data' },
-        { status: 500 }
-      );
+    if (bookingsError) {
+      console.error('Error fetching bookings:', bookingsError);
+      throw bookingsError;
     }
 
-    // Get payment statistics
+    // Get total payments
     const { data: payments, error: paymentsError } = await supabase
       .from('payments')
       .select('*')
@@ -45,43 +52,39 @@ async function handler(request: AuthenticatedRequest) {
 
     if (paymentsError) {
       console.error('Error fetching payments:', paymentsError);
-      return NextResponse.json(
-        { error: 'Failed to fetch payment data' },
-        { status: 500 }
-      );
+      throw paymentsError;
     }
 
     // Calculate statistics
-    const totalRentals = rentals?.length || 0;
+    const totalBookings = bookings?.length || 0;
     const totalRevenue = payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
-    const activeRentals = rentals?.filter(r => r.status === 'active').length || 0;
-    const completedRentals = rentals?.filter(r => r.status === 'completed').length || 0;
-    const cancelledRentals = rentals?.filter(r => r.status === 'cancelled').length || 0;
+    const activeBookings = bookings?.filter(r => r.status === 'active').length || 0;
+    const completedBookings = bookings?.filter(r => r.status === 'completed').length || 0;
+    const cancelledBookings = bookings?.filter(r => r.status === 'cancelled').length || 0;
 
-    // Format rental data
-    const rentalData = rentals?.map(rental => ({
-      id: rental.id,
-      rental_id: rental.rental_id,
-      customer_name: `${rental.customer.first_name} ${rental.customer.last_name}`,
-      vehicle: `${rental.vehicle.model} (${rental.vehicle.number_plate})`,
-      start_date: rental.start_date,
-      end_date: rental.end_date,
-      status: rental.status,
-      total_amount: rental.total_amount,
-      payment_status: rental.payment_status
-    })) || [];
+    // Format booking data for display
+    const bookingData = bookings?.map(booking => ({
+      id: booking.id,
+      booking_id: booking.booking_id,
+      customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
+      vehicle: `${booking.vehicle.model} (${booking.vehicle.number_plate})`,
+      start_date: booking.start_date,
+      end_date: booking.end_date,
+      status: booking.status,
+      amount: booking.total_amount,
+      payment_status: booking.payment_status
+    }));
 
     return NextResponse.json({
       success: true,
       data: {
-        summary: {
-          totalRentals,
-          totalRevenue,
-          activeRentals,
-          completedRentals,
-          cancelledRentals
-        },
-        rentals: rentalData
+        totalCustomers: customers?.length || 0,
+        totalBookings,
+        totalRevenue,
+        activeBookings,
+        completedBookings,
+        cancelledBookings,
+        bookings: bookingData
       }
     });
   } catch (error) {
@@ -93,4 +96,5 @@ async function handler(request: AuthenticatedRequest) {
   }
 }
 
-export const GET = withAuth(handler); 
+// Role check middleware to protect the route
+export const GET = withRoleCheck(handler, ['admin']); 

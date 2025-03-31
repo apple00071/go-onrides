@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 export default function Home() {
   const router = useRouter();
@@ -16,5 +16,9 @@ export default function Home() {
     }
   }, [isDevelopment, router]);
 
-  return null;
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <LoadingSpinner />
+    </div>
+  );
 }

@@ -1,3 +1,10 @@
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
 export const getStatusColor = (status: string) => {
   const colors = {
     pending: 'bg-yellow-100 text-yellow-800',
@@ -11,4 +18,27 @@ export const getStatusColor = (status: string) => {
     retired: 'bg-gray-100 text-gray-800'
   };
   return colors[status.toLowerCase() as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-}; 
+};
+
+export function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase();
+}
+
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amount);
+}
+
+export function formatDate(date: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(new Date(date));
+} 

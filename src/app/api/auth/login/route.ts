@@ -1,121 +1,104 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
-import { generateAuthToken, setAuthCookie, isDevelopment } from '@/lib/auth';
-import { dbAdapter } from '@/lib/db-adapter';
-import type { User } from '@/types';
+import * as jose from 'jose';
+import { supabase } from '@/lib/db';
 import { dynamic, revalidate } from '../../config';
 
-// Define the type for database users that includes password
-interface DBUser extends Omit<User, 'permissions'> {
-  password: string;
-  permissions: string | string[];
-}
+// Mark as Node.js runtime
+export const runtime = 'nodejs';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const secret = new TextEncoder().encode(JWT_SECRET);
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { email, password } = body;
 
-    console.log('Login attempt for email:', email);
-
     if (!email || !password) {
-      console.log('Missing email or password');
       return NextResponse.json(
-        { success: false, message: 'Email and password are required' },
+        { success: false, error: 'Email and password are required' },
         { status: 400 }
       );
     }
 
-    // Use the DB adapter to get the user
-    const user = await dbAdapter.getUserByEmail(email);
+    // Get user from Supabase
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
 
-    console.log('Found user:', user ? { ...user, password: '[REDACTED]' } : 'User not found');
-
-    if (!user) {
-      console.log('User not found');
+    if (error || !user) {
+      console.error('Error finding user:', error);
       return NextResponse.json(
-        { success: false, message: 'Invalid credentials' },
+        { success: false, error: 'Invalid credentials' },
         { status: 401 }
       );
     }
 
-    // Log the stored hash for debugging
-    console.log('Stored password hash:', user.password);
-    console.log('Input password:', password);
-
-    // Use bcrypt.compare for secure comparison
+    // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
-    console.log('Password validation result:', isValidPassword);
-
     if (!isValidPassword) {
-      console.log('Invalid password');
       return NextResponse.json(
-        { success: false, message: 'Invalid credentials' },
+        { success: false, error: 'Invalid credentials' },
         { status: 401 }
       );
     }
 
-    if (user.status !== 'active') {
-      console.log('User account not active');
-      return NextResponse.json(
-        { success: false, message: 'Account is inactive. Please contact administrator.' },
-        { status: 403 }
-      );
+    // Update last login timestamp
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('Error updating last login:', updateError);
     }
 
-    // Update last login time using the adapter
-    await dbAdapter.updateUserLastLogin(user.id);
-
-    // Handle permissions - ensure they're in array format
-    const permissions = user.permissions ? 
-      (Array.isArray(user.permissions) ? user.permissions : JSON.parse(user.permissions as string)) 
-      : [];
-
-    // Generate JWT token with permissions
-    const token = await generateAuthToken({
+    // Generate JWT token using jose
+    const token = await new jose.SignJWT({ 
       id: user.id,
       email: user.email,
       role: user.role,
-      full_name: user.full_name,
-      status: user.status,
-      permissions
+      permissions: user.permissions
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('24h')
+      .sign(secret);
+
+    // Set cookie
+    const cookieStore = cookies();
+    cookieStore.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60, // 24 hours
+      path: '/'
     });
 
-    console.log('Generated auth token');
-
-    // Set auth cookie
-    setAuthCookie(token);
-    console.log('Set auth cookie');
-
-    // Return user data (without password)
-    const { password: _, ...userData } = user;
-
-    // Create the response with the appropriate headers
-    const response = NextResponse.json({
+    // Return success response with user data
+    return NextResponse.json({
       success: true,
-      role: user.role,
-      data: {
-        ...userData,
-        permissions: permissions
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        full_name: user.full_name,
+        role: user.role,
+        status: user.status,
+        permissions: user.permissions,
+        created_at: user.created_at,
+        last_login_at: new Date().toISOString(),
+        phone: user.phone
       }
     });
-
-    // Set CORS headers based on environment
-    const origin = request.headers.get('origin') || '';
-    response.headers.set('Access-Control-Allow-Credentials', 'true');
-    response.headers.set('Access-Control-Allow-Origin', isDevelopment() ? origin || '*' : origin);
-
-    if (isDevelopment()) {
-      response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    }
-
-    console.log('Login successful');
-    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(
-      { success: false, message: 'Internal server error' },
+      { success: false, error: 'Internal server error' },
       { status: 500 }
     );
   }

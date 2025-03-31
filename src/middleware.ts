@@ -2,71 +2,120 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as jose from 'jose';
 
-// Define paths that should be dynamic
-const DYNAMIC_ROUTES = [
-  '/api/test/check-auth-token',
-  '/api/admin/dashboard/stats',
-  '/api/auth/me',
-  '/api/customers/search',
-  '/api/reports/rentals',
-  '/api/reports/payments',
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const secret = new TextEncoder().encode(JWT_SECRET);
+
+interface JWTPayload {
+  id: string | number;
+  email: string;
+  role: string;
+  permissions: string[];
+  iat?: number;
+  exp?: number;
+}
+
+// Routes that require authentication
+const protectedRoutes = [
+  '/admin',
+  '/worker',
+  '/api/admin',
+  '/api/worker',
+  '/api/bookings',
+  '/api/vehicles',
+  '/api/customers',
   '/api/reports',
-  '/api/worker/dashboard/stats'
+  '/api/settings'
 ];
 
-// Define paths that should skip authentication
-const PUBLIC_PATHS = [
+// Routes that are always public
+const publicRoutes = [
   '/login',
-  '/worker/login',
-  '/api/login',
-  '/api/worker/login',
+  '/api/auth/login',
+  '/api/auth/logout',
   '/_next',
   '/favicon.ico',
-  '/images',
-  '/fonts'
+  '/public'
 ];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Force dynamic behavior for specific API routes
-  if (DYNAMIC_ROUTES.some(route => pathname.startsWith(route))) {
-    const response = NextResponse.next();
-    response.headers.set('x-middleware-cache', 'no-cache');
-    return response;
-  }
-
-  // Skip authentication for public paths
-  if (PUBLIC_PATHS.some(path => pathname.startsWith(path))) {
+  // Allow public routes
+  if (publicRoutes.some(route => pathname.startsWith(route))) {
     return NextResponse.next();
   }
 
-  // Continue with existing authentication logic
-  const adminToken = request.cookies.get('adminToken');
-  const authToken = request.cookies.get('authToken');
-
-  // Redirect to login if accessing admin routes without admin token
-  if (pathname.startsWith('/admin') && !adminToken) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  // Check if it's a protected route
+  const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
+  if (!isProtectedRoute) {
+    return NextResponse.next();
   }
 
-  // Redirect to worker login if accessing worker routes without auth token
-  if (pathname.startsWith('/worker') && !authToken) {
-    return NextResponse.redirect(new URL('/worker/login', request.url));
+  // Get token from cookies
+  const token = request.cookies.get('token')?.value;
+
+  if (!token) {
+    // If accessing API route, return 401
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { success: false, error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    
+    // For other routes, redirect to login
+    const url = new URL('/login', request.url);
+    url.searchParams.set('from', pathname);
+    return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  try {
+    // Verify token using jose
+    const { payload } = await jose.jwtVerify(token, secret) as { payload: JWTPayload };
+
+    // Check role-based access
+    if (pathname.startsWith('/admin') && payload.role !== 'admin') {
+      return NextResponse.redirect(new URL('/unauthorized', request.url));
+    }
+
+    if (pathname.startsWith('/worker') && !['admin', 'worker'].includes(payload.role)) {
+      return NextResponse.redirect(new URL('/unauthorized', request.url));
+    }
+
+    // Add user info to headers for API routes
+    if (pathname.startsWith('/api/')) {
+      const requestHeaders = new Headers(request.headers);
+      requestHeaders.set('x-user-id', payload.id.toString());
+      requestHeaders.set('x-user-role', payload.role);
+      requestHeaders.set('x-user-permissions', JSON.stringify(payload.permissions));
+
+      return NextResponse.next({
+        headers: requestHeaders,
+      });
+    }
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error('Token verification failed:', error);
+    
+    // Clear invalid token
+    const response = NextResponse.redirect(new URL('/login', request.url));
+    response.cookies.delete('token');
+    
+    return response;
+  }
 }
 
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
+     * Match all request paths except:
+     * 1. /_next (Next.js internals)
+     * 2. /favicon.ico, /sitemap.xml (static files)
+     * 3. /public (public assets)
+     * 4. .*\\..*$ (files with extensions, e.g. images)
      */
-    '/((?!_next/static|_next/image|favicon.ico|public/|images/|fonts/).*)',
+    '/((?!_next|favicon.ico|sitemap.xml|public|.*\\..*$).*)',
+    '/api/:path*'
   ],
 }; 

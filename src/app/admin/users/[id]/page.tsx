@@ -1,10 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, notFound } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
 import { User, Permission } from '@/types';
+import { fetchUserDetails } from '@/lib/api';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getInitials } from '@/lib/utils';
+import Link from 'next/link';
 
 interface UserDetailsProps {
   params: {
@@ -23,183 +31,116 @@ interface UserWithActivity extends User {
   };
 }
 
-export default function UserPage({ params }: UserDetailsProps) {
-  const { id } = params;
-  const router = useRouter();
-  const [user, setUser] = useState<UserWithActivity | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  
-  const fetchUserDetails = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`/api/admin/users/${params.id}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch user details');
-      }
-      const data = await response.json();
-      setUser(data);
-    } catch (error) {
-      console.error('Error fetching user details:', error);
-      setError(error instanceof Error ? error.message : 'An error occurred');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [params.id]);
-  
-  useEffect(() => {
-    fetchUserDetails();
-  }, [fetchUserDetails]);
-  
-  const handleDelete = async () => {
-    try {
-      const response = await fetch(`/api/users/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        }
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to delete user');
-      }
-      
-      router.push('/admin/users');
-    } catch (err) {
-      console.error('Error deleting user:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-      setShowDeleteConfirm(false);
-    }
-  };
-  
-  const handleEditClick = () => {
-    router.push(`/admin/users/${id}/edit`);
-  };
-  
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'Never';
-    return new Date(dateString).toLocaleString();
-  };
-  
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return 'bg-purple-100 text-purple-800';
-      case 'worker':
-        return 'bg-blue-100 text-blue-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-  
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-100 text-green-800';
-      case 'inactive':
-        return 'bg-gray-100 text-gray-800';
-      case 'suspended':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
+interface UserStats {
+  totalActions: number;
+  bookingsCreated: number;
+  bookingsCompleted: number;
+  paymentsReceived: number;
+  paymentsAmount: number;
+  maintenanceRecords: number;
+}
+
+interface UserDetails {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  phone: string;
+  created_at: string;
+  last_login: string;
+  status: string;
+  stats: UserStats;
+}
+
+export default async function UserDetailsPage({ params }: UserDetailsProps) {
+  const { data: user, error } = await fetchUserDetails(params.id);
+
+  if (error || !user) {
+    notFound();
+  }
+
+  const userDetails: UserDetails = user;
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">User Details</h1>
-        <div className="space-x-4">
-          <button
-            onClick={handleEditClick}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            Edit User
-          </button>
-          <button
-            onClick={handleDelete}
-            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-          >
-            Delete User
-          </button>
-        </div>
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-semibold">User Details</h1>
+        <Link href={`/admin/users/${params.id}/edit`}>
+          <Button>Edit User</Button>
+        </Link>
       </div>
 
-      {error && <ErrorAlert message={error} />}
-
-      {isLoading ? (
-        <LoadingSpinner />
-      ) : user ? (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          {/* Basic Information */}
-          <div className="p-6 border-b">
-            <h2 className="text-xl font-semibold mb-4">Basic Information</h2>
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-6">
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Full Name</dt>
-                <dd className="mt-1 text-sm text-gray-900">{user.full_name}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Email</dt>
-                <dd className="mt-1 text-sm text-gray-900">{user.email}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Role</dt>
-                <dd className="mt-1">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
-                    {user.role}
-                  </span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Status</dt>
-                <dd className="mt-1">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(user.status)}`}>
-                    {user.status}
-                  </span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Created At</dt>
-                <dd className="mt-1 text-sm text-gray-900">{formatDate(user.created_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Last Login</dt>
-                <dd className="mt-1 text-sm text-gray-900">{user.last_login_at ? formatDate(user.last_login_at) : 'Never'}</dd>
-              </div>
-            </dl>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* User Profile Card */}
+        <Card className="p-6">
+          <div className="flex items-center space-x-4">
+            <Avatar className="h-16 w-16">
+              <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${userDetails.first_name}%20${userDetails.last_name}`} />
+              <AvatarFallback>{getInitials(`${userDetails.first_name} ${userDetails.last_name}`)}</AvatarFallback>
+            </Avatar>
+            <div>
+              <h2 className="text-xl font-semibold">{`${userDetails.first_name} ${userDetails.last_name}`}</h2>
+              <p className="text-sm text-gray-500">{userDetails.email}</p>
+              <Badge variant={userDetails.status === 'active' ? 'success' : 'destructive'} className="mt-2">
+                {userDetails.status}
+              </Badge>
+            </div>
           </div>
 
-          {/* Permissions Section */}
-          {user.role === 'worker' && (
-            <div className="p-6">
-              <h2 className="text-xl font-semibold mb-4">Permissions</h2>
-              <div className="space-y-4">
-                {user.permissions && user.permissions.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {user.permissions.map((permission) => (
-                      <span
-                        key={permission}
-                        className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
-                      >
-                        {permission}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 italic">No permissions assigned</p>
-                )}
-              </div>
+          <Separator className="my-4" />
+
+          <div className="space-y-2">
+            <div>
+              <p className="text-sm text-gray-500">Role</p>
+              <p className="font-medium">{userDetails.role}</p>
             </div>
-          )}
-        </div>
-      ) : (
-        <div className="text-center text-gray-500">User not found</div>
-      )}
+            <div>
+              <p className="text-sm text-gray-500">Phone</p>
+              <p className="font-medium">{userDetails.phone}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Created At</p>
+              <p className="font-medium">{new Date(userDetails.created_at).toLocaleDateString()}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Last Login</p>
+              <p className="font-medium">{new Date(userDetails.last_login).toLocaleDateString()}</p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Activity Stats */}
+        <Card className="p-6 md:col-span-2">
+          <h3 className="text-lg font-semibold mb-4">Activity Statistics</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500">Total Actions</p>
+              <p className="text-2xl font-semibold">{userDetails.stats.totalActions}</p>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500">Bookings Created</p>
+              <p className="text-2xl font-semibold">{userDetails.stats.bookingsCreated}</p>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500">Bookings Completed</p>
+              <p className="text-2xl font-semibold">{userDetails.stats.bookingsCompleted}</p>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500">Payments Received</p>
+              <p className="text-2xl font-semibold">{userDetails.stats.paymentsReceived}</p>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500">Total Payments</p>
+              <p className="text-2xl font-semibold">${userDetails.stats.paymentsAmount}</p>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-500">Maintenance Records</p>
+              <p className="text-2xl font-semibold">{userDetails.stats.maintenanceRecords}</p>
+            </div>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 } 
