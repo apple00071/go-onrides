@@ -1,18 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter, notFound } from 'next/navigation';
-import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import ErrorAlert from '@/components/ui/ErrorAlert';
-import { User, Permission } from '@/types';
-import { fetchUserDetails } from '@/lib/api';
-import { Card } from '@/components/ui/card';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { getInitials } from '@/lib/utils';
-import Link from 'next/link';
+import { formatDate } from '@/lib/format';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import type { UserDetails } from '@/types';
 
 interface UserDetailsProps {
   params: {
@@ -20,127 +15,146 @@ interface UserDetailsProps {
   };
 }
 
-interface UserWithActivity extends User {
-  last_login_at?: string;
-  activity?: {
-    totalActions: number;
-    rentalsCreated: number;
-    rentalsCompleted: number;
-    paymentsProcessed: number;
-    maintenanceRecords: number;
-  };
-}
+export default function UserDetailsPage({ params }: UserDetailsProps) {
+  const router = useRouter();
+  const [user, setUser] = useState<UserDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-interface UserStats {
-  totalActions: number;
-  bookingsCreated: number;
-  bookingsCompleted: number;
-  paymentsReceived: number;
-  paymentsAmount: number;
-  maintenanceRecords: number;
-}
+  useEffect(() => {
+    const fetchUserDetails = async () => {
+      try {
+        const response = await fetch(`/api/users/${params.id}`, {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          throw new Error('Failed to fetch user details');
+        }
+        const data = await response.json();
+        setUser(data.data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load user details');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-interface UserDetails {
-  id: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  role: string;
-  phone: string;
-  created_at: string;
-  last_login: string;
-  status: string;
-  stats: UserStats;
-}
+    fetchUserDetails();
+  }, [params.id]);
 
-export default async function UserDetailsPage({ params }: UserDetailsProps) {
-  const { data: user, error } = await fetchUserDetails(params.id);
-
-  if (error || !user) {
-    notFound();
-  }
-
-  const userDetails: UserDetails = user;
+  if (loading) return <LoadingSpinner />;
+  if (error) return <div className="text-red-500">Error: {error}</div>;
+  if (!user) return <div>No user found</div>;
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold">User Details</h1>
-        <Link href={`/admin/users/${params.id}/edit`}>
-          <Button>Edit User</Button>
-        </Link>
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">
+          {user.first_name} {user.last_name}
+        </h1>
+        <div className="space-x-4">
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/admin/users/${params.id}/edit`)}
+          >
+            Edit User
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push('/admin/users')}
+          >
+            Back to Users
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* User Profile Card */}
-        <Card className="p-6">
-          <div className="flex items-center space-x-4">
-            <Avatar className="h-16 w-16">
-              <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${userDetails.first_name}%20${userDetails.last_name}`} />
-              <AvatarFallback>{getInitials(`${userDetails.first_name} ${userDetails.last_name}`)}</AvatarFallback>
-            </Avatar>
-            <div>
-              <h2 className="text-xl font-semibold">{`${userDetails.first_name} ${userDetails.last_name}`}</h2>
-              <p className="text-sm text-gray-500">{userDetails.email}</p>
-              <Badge variant={userDetails.status === 'active' ? 'success' : 'destructive'} className="mt-2">
-                {userDetails.status}
-              </Badge>
-            </div>
-          </div>
-
-          <Separator className="my-4" />
-
-          <div className="space-y-2">
-            <div>
-              <p className="text-sm text-gray-500">Role</p>
-              <p className="font-medium">{userDetails.role}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Phone</p>
-              <p className="font-medium">{userDetails.phone}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Created At</p>
-              <p className="font-medium">{new Date(userDetails.created_at).toLocaleDateString()}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Last Login</p>
-              <p className="font-medium">{new Date(userDetails.last_login).toLocaleDateString()}</p>
-            </div>
-          </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>User Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="space-y-4">
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Email</dt>
+                <dd>{user.email}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Role</dt>
+                <dd>
+                  <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+                    {user.role}
+                  </Badge>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Status</dt>
+                <dd>
+                  <Badge variant={user.status === 'active' ? 'success' : 'destructive'}>
+                    {user.status}
+                  </Badge>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Member Since</dt>
+                <dd>{formatDate(user.created_at)}</dd>
+              </div>
+            </dl>
+          </CardContent>
         </Card>
 
-        {/* Activity Stats */}
-        <Card className="p-6 md:col-span-2">
-          <h3 className="text-lg font-semibold mb-4">Activity Statistics</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-500">Total Actions</p>
-              <p className="text-2xl font-semibold">{userDetails.stats.totalActions}</p>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-500">Bookings Created</p>
-              <p className="text-2xl font-semibold">{userDetails.stats.bookingsCreated}</p>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-500">Bookings Completed</p>
-              <p className="text-2xl font-semibold">{userDetails.stats.bookingsCompleted}</p>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-500">Payments Received</p>
-              <p className="text-2xl font-semibold">{userDetails.stats.paymentsReceived}</p>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-500">Total Payments</p>
-              <p className="text-2xl font-semibold">${userDetails.stats.paymentsAmount}</p>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-500">Maintenance Records</p>
-              <p className="text-2xl font-semibold">{userDetails.stats.maintenanceRecords}</p>
-            </div>
-          </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity Statistics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="space-y-4">
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Total Actions</dt>
+                <dd>{user.stats.totalActions}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Last Active</dt>
+                <dd>{formatDate(user.stats.lastActive)}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-gray-500">Login Count</dt>
+                <dd>{user.stats.loginCount}</dd>
+              </div>
+            </dl>
+          </CardContent>
         </Card>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="px-4 py-2 text-left">Action</th>
+                  <th className="px-4 py-2 text-left">Details</th>
+                  <th className="px-4 py-2 text-left">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {user.recentActivity.map((activity) => (
+                  <tr key={activity.id} className="border-b">
+                    <td className="px-4 py-2">
+                      <Badge variant="outline">{activity.action}</Badge>
+                    </td>
+                    <td className="px-4 py-2">{activity.details}</td>
+                    <td className="px-4 py-2">{formatDate(activity.timestamp)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 } 

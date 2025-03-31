@@ -192,4 +192,53 @@ export interface DBBooking {
   remarks?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface UserDetails {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  status: string;
+  created_at: string;
+  stats: {
+    totalActions: number;
+    lastActive: string;
+    loginCount: number;
+  };
+  recentActivity: {
+    id: string;
+    action: string;
+    details: string;
+    timestamp: string;
+  }[];
+}
+
+export interface CustomerDetails {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  created_at: string;
+  stats: {
+    totalBookings: number;
+    activeBookings: number;
+    completedBookings: number;
+    totalSpent: number;
+  };
+  bookings: {
+    id: string;
+    booking_id: string;
+    vehicle: string;
+    start_date: string;
+    end_date: string;
+    status: string;
+    amount: number;
+  }[];
 } 
