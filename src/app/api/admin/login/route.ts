@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { getDB } from '@/lib/db';
+import { supabase } from '@/lib/db';
+import { dynamic, revalidate } from '../../config';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
@@ -18,10 +19,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const db = await getDB();
-    const user = await db.get('SELECT * FROM users WHERE username = ? AND role = ?', [username, 'admin']);
+    // Get user from Supabase
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .eq('role', 'admin')
+      .single();
 
-    if (!user || !await bcrypt.compare(password, user.password)) {
+    if (error || !user || !await bcrypt.compare(password, user.password)) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }

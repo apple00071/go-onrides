@@ -1,112 +1,50 @@
-import { supabase, TABLES, isDevelopment } from './supabase';
-import { getDB } from './db'; // The existing SQLite adapter
-import { User, Customer, Vehicle, Booking, Payment } from '@/types';
-import { PostgrestError } from '@supabase/supabase-js';
+import { supabase } from './db';
+import type { User } from '@/types';
 
-// Define a type for database users that includes password
 interface DBUser extends Omit<User, 'permissions'> {
   password: string;
   permissions: string | string[];
 }
 
-/**
- * Database adapter that switches between Supabase (dev) and SQLite/MySQL (prod)
- * Provides a consistent interface regardless of which database is being used
- */
 class DBAdapter {
-  // User-related operations
   async getUserByEmail(email: string): Promise<DBUser | null> {
     try {
-      const db = await getDB();
-      const user = await db.get(
-        `SELECT id, email, password, full_name, username, role, status, permissions, created_at, last_login_at
-         FROM users 
-         WHERE email = ?`,
-        [email]
-      );
+      const { data: user, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email)
+        .single();
 
-      if (!user) {
+      if (error || !user) {
         return null;
       }
 
-      // Ensure permissions is properly parsed
-      if (user.permissions && typeof user.permissions === 'string') {
-        try {
-          user.permissions = JSON.parse(user.permissions);
-        } catch (err) {
-          console.error('Error parsing permissions:', err);
-          user.permissions = [];
-        }
-      } else if (!user.permissions) {
-        user.permissions = [];
-      }
-
-      return user as DBUser;
+      return user;
     } catch (error) {
       console.error('Error getting user by email:', error);
-      throw error;
+      return null;
     }
   }
 
-  // User authentication
   async updateUserLastLogin(userId: number): Promise<void> {
     try {
-      const db = await getDB();
-      await db.run(
-        'UPDATE users SET last_login_at = datetime("now") WHERE id = ?',
-        [userId]
-      );
+      const { error } = await supabase
+        .from('users')
+        .update({ last_login_at: new Date().toISOString() })
+        .eq('id', userId);
+
+      if (error) {
+        throw error;
+      }
     } catch (error) {
-      console.error('Error updating last login:', error);
-      throw error;
+      console.error('Error updating user last login:', error);
     }
   }
 
-  // Customers operations
   async getCustomers() {
-    if (isDevelopment()) {
-      const { data, error } = await supabase
-        .from(TABLES.CUSTOMERS)
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching customers:', error.message);
-        return [];
-      }
-      return data;
-    } else {
-      // Production: use SQLite/MySQL
-      const db = await getDB();
-      return db.all('SELECT * FROM customers ORDER BY created_at DESC');
-    }
-  }
-
-  // Vehicles operations
-  async getVehicles() {
-    if (isDevelopment()) {
-      const { data, error } = await supabase
-        .from(TABLES.VEHICLES)
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching vehicles:', error.message);
-        return [];
-      }
-      return data;
-    } else {
-      // Production: use SQLite/MySQL
-      const db = await getDB();
-      return db.all('SELECT * FROM vehicles ORDER BY created_at DESC');
-    }
-  }
-
-  // Bookings operations
-  async getBookings() {
     try {
-      const { data, error } = await supabase
-        .from(TABLES.BOOKINGS)
+      const { data: customers, error } = await supabase
+        .from('customers')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -114,84 +52,128 @@ class DBAdapter {
         throw error;
       }
 
-      return data;
+      return customers;
     } catch (error) {
-      if (error instanceof PostgrestError) {
-        console.error('Error fetching bookings:', error.message);
-      } else {
-        console.error('Unknown error fetching bookings:', error);
+      console.error('Error getting customers:', error);
+      return [];
+    }
+  }
+
+  async getVehicles() {
+    try {
+      const { data: vehicles, error } = await supabase
+        .from('vehicles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
       }
-      throw error;
+
+      return vehicles;
+    } catch (error) {
+      console.error('Error getting vehicles:', error);
+      return [];
+    }
+  }
+
+  async getBookings() {
+    try {
+      const { data: bookings, error } = await supabase
+        .from('bookings')
+        .select(`
+          *,
+          customer:customers(first_name, last_name),
+          vehicle:vehicles(model, number_plate)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      return bookings;
+    } catch (error) {
+      console.error('Error getting bookings:', error);
+      return [];
     }
   }
 
   async getBookingStats() {
     try {
-      const { data, error } = await supabase
-        .from(TABLES.BOOKINGS)
-        .select(`
-          id,
-          booking_id,
-          start_date,
-          end_date,
-          status,
-          base_price,
-          total_amount,
-          created_at,
-          customers:customer_id (
-            first_name,
-            last_name
-          ),
-          vehicles:vehicle_id (
-            model,
-            number_plate
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(5);
+      // Get total bookings
+      const { count: totalBookings } = await supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true });
 
-      if (error) {
-        throw error;
-      }
+      // Get active bookings
+      const { count: activeBookings } = await supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
 
-      return data;
+      // Get total revenue
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('amount');
+
+      const totalRevenue = payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+
+      // Get pending payments
+      const { count: pendingPayments } = await supabase
+        .from('payments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      // Get available vehicles
+      const { count: availableVehicles } = await supabase
+        .from('vehicles')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'available');
+
+      // Get maintenance vehicles
+      const { count: maintenanceVehicles } = await supabase
+        .from('vehicles')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'maintenance');
+
+      // Get total customers
+      const { count: totalCustomers } = await supabase
+        .from('customers')
+        .select('*', { count: 'exact', head: true });
+
+      // Get overdue bookings
+      const today = new Date().toISOString();
+      const { count: overdueBookings } = await supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active')
+        .lt('end_date', today);
+
+      return {
+        totalBookings: totalBookings || 0,
+        activeBookings: activeBookings || 0,
+        totalRevenue,
+        pendingPayments: pendingPayments || 0,
+        availableVehicles: availableVehicles || 0,
+        maintenanceVehicles: maintenanceVehicles || 0,
+        totalCustomers: totalCustomers || 0,
+        overdueBookings: overdueBookings || 0
+      };
     } catch (error) {
-      if (error instanceof PostgrestError) {
-        console.error('Error fetching booking stats:', error.message);
-      } else {
-        console.error('Unknown error fetching booking stats:', error);
-      }
-      throw error;
-    }
-  }
-
-  // Generic transaction handling
-  async transaction<T>(callback: (trx: any) => Promise<T>): Promise<T> {
-    if (isDevelopment()) {
-      // Supabase doesn't have native transactions in the client,
-      // but we can simulate the behavior for consistency
-      try {
-        return await callback(supabase);
-      } catch (error) {
-        console.error('Transaction error:', error);
-        throw error;
-      }
-    } else {
-      // Production: use SQLite/MySQL
-      const db = await getDB();
-      try {
-        await db.run('BEGIN TRANSACTION');
-        const result = await callback(db);
-        await db.run('COMMIT');
-        return result;
-      } catch (error) {
-        await db.run('ROLLBACK');
-        console.error('Transaction error:', error);
-        throw error;
-      }
+      console.error('Error getting booking stats:', error);
+      return {
+        totalBookings: 0,
+        activeBookings: 0,
+        totalRevenue: 0,
+        pendingPayments: 0,
+        availableVehicles: 0,
+        maintenanceVehicles: 0,
+        totalCustomers: 0,
+        overdueBookings: 0
+      };
     }
   }
 }
 
-// Export a singleton instance
 export const dbAdapter = new DBAdapter(); 

@@ -111,8 +111,8 @@ async function handler(request: AuthenticatedRequest) {
     return NextResponse.json({
       success: true,
       data: stats
-    });
-  } catch (error) {
+        });
+      } catch (error) {
     console.error('Error fetching dashboard stats:', error);
     return NextResponse.json(
       { error: 'Failed to fetch dashboard statistics' },

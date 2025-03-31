@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDB } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 import type { AuthenticatedRequest } from '@/types';
@@ -15,12 +15,14 @@ async function getUsers(request: AuthenticatedRequest) {
     const sortField = searchParams.get('sort') || 'created_at';
     const sortOrder = searchParams.get('order') || 'desc';
     
-    const db = await getDB();
-    const users = await db.all(`
-      SELECT id, username as name, role, full_name, email, phone, status, created_at, last_login_at 
-      FROM users 
-      ORDER BY ${sortField} ${sortOrder}
-    `);
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, username, role, full_name, email, phone, status, created_at, last_login_at')
+      .order(sortField, { ascending: sortOrder === 'asc' });
+
+    if (error) {
+      throw error;
+    }
     
     return NextResponse.json({ users });
   } catch (error) {
@@ -59,8 +61,12 @@ async function createUser(request: AuthenticatedRequest) {
     }
     
     // Check if username already exists
-    const db = await getDB();
-    const existingUser = await db.get('SELECT id FROM users WHERE username = ?', [username]);
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', username)
+      .single();
+
     if (existingUser) {
       return NextResponse.json(
         { error: 'Username already exists' },
@@ -86,24 +92,28 @@ async function createUser(request: AuthenticatedRequest) {
     }
     
     // Insert user
-    const result = await db.run(
-      `INSERT INTO users (username, password, role, full_name, email, phone, status, permissions, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      [
-        username, 
-        hashedPassword, 
-        role, 
-        full_name, 
-        email, 
-        phone || null, 
-        'active',
-        JSON.stringify(userPermissions || [])
-      ]
-    );
+    const { data: newUser, error } = await supabase
+      .from('users')
+      .insert({
+        username,
+        password: hashedPassword,
+        role,
+        full_name,
+        email,
+        phone: phone || null,
+        status: 'active',
+        permissions: userPermissions
+      })
+      .select('id')
+      .single();
     
+    if (error) {
+      throw error;
+    }
+
     return NextResponse.json({ 
       message: 'User created successfully',
-      userId: result.lastID
+      userId: newUser.id
     });
   } catch (error) {
     console.error('Error creating user:', error);
