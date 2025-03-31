@@ -1,36 +1,88 @@
 import { NextResponse } from 'next/server';
-import { getDB } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
+import { dynamic, revalidate } from '@/app/api/config';
 
-async function handler(request: AuthenticatedRequest) {
+async function handler(
+  request: AuthenticatedRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    const id = request.params?.id;
+    const id = params.id;
+    console.log('Processing return for rental ID:', id);
+
     if (!id) {
+      console.log('No rental ID provided');
       return NextResponse.json(
-        { error: 'Rental ID is required' },
+        { success: false, error: 'Rental ID is required' },
         { status: 400 }
       );
     }
 
-    const { remarks } = await request.json();
-    const db = await getDB();
+    // First, get the rental to check its current status and get the vehicle ID
+    const { data: rental, error: rentalError } = await supabase
+      .from('rentals')
+      .select('status, vehicle_id')
+      .eq('id', id)
+      .single();
+
+    if (rentalError || !rental) {
+      console.error('Error finding rental:', rentalError);
+      return NextResponse.json(
+        { success: false, error: 'Rental not found' },
+        { status: 404 }
+      );
+    }
+
+    if (rental.status !== 'active') {
+      return NextResponse.json(
+        { success: false, error: `Cannot return a rental that is ${rental.status}` },
+        { status: 400 }
+      );
+    }
 
     // Update rental status
-    await db.run(
-      `UPDATE rentals 
-       SET status = ?, 
-           actual_return_date = CURRENT_TIMESTAMP,
-           notes = ? 
-       WHERE rental_id = ?`,
-      ['completed', remarks, id]
-    );
+    const { error: updateRentalError } = await supabase
+      .from('rentals')
+      .update({
+        status: 'completed',
+        return_date: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
 
-    return NextResponse.json({ message: 'Rental updated successfully' });
+    if (updateRentalError) {
+      console.error('Error updating rental:', updateRentalError);
+      return NextResponse.json(
+        { success: false, error: 'Failed to update rental status' },
+        { status: 500 }
+      );
+    }
+
+    // Update vehicle status back to available
+    const { error: updateVehicleError } = await supabase
+      .from('vehicles')
+      .update({ status: 'available' })
+      .eq('id', rental.vehicle_id);
+
+    if (updateVehicleError) {
+      console.error('Error updating vehicle status:', updateVehicleError);
+      // Don't fail the request if vehicle update fails, but log it
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Rental return processed successfully'
+    });
   } catch (error) {
-    console.error('Error updating rental:', error);
+    console.error('Error processing return:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        success: false, 
+        error: 'Failed to process return',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

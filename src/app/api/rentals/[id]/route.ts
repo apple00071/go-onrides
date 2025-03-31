@@ -1,275 +1,155 @@
 import { NextResponse } from 'next/server';
-import { getDB } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
+import { dynamic, revalidate } from '@/app/api/config';
 
 // Get a single rental with detailed information
-async function getRental(request: AuthenticatedRequest) {
+async function getRental(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {
-    const rentalId = request.params?.id;
-    if (!rentalId) {
-      return NextResponse.json(
-        { error: 'Rental ID is required' },
-        { status: 400 }
-      );
-    }
-    
-    const db = await getDB();
-    
-    // Get the rental with related data
-    const rental = await db.get(`
-      SELECT 
-        r.*,
-        c.first_name, c.last_name, c.email, c.phone, c.address,
-        c.father_phone, c.mother_phone, c.emergency_contact1, c.emergency_contact2,
-        v.type as vehicle_type, v.model as vehicle_model, v.serial_number,
-        u.full_name as worker_name
-      FROM rentals r
-      LEFT JOIN customers c ON r.customer_id = c.id
-      LEFT JOIN vehicles v ON r.vehicle_id = v.id
-      LEFT JOIN users u ON r.worker_id = u.id
-      WHERE r.id = ?
-    `, [rentalId]);
-    
-    if (!rental) {
+    const { data: rental, error } = await supabase
+      .from('rentals')
+      .select(`
+        *,
+        customer:customers(
+          id,
+          first_name,
+          last_name,
+          email,
+          phone,
+          father_phone,
+          mother_phone,
+          emergency_contact1,
+          emergency_contact2
+        ),
+        vehicle:vehicles(
+          id,
+          model,
+          type,
+          number_plate,
+          daily_rate
+        ),
+        worker:users(
+          id,
+          full_name
+        )
+      `)
+      .eq('id', params.id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching rental:', error);
       return NextResponse.json(
         { error: 'Rental not found' },
         { status: 404 }
       );
     }
-    
-    // Get payments associated with this rental
-    const payments = await db.all(`
-      SELECT p.*, u.full_name as received_by_name
-      FROM payments p
-      LEFT JOIN users u ON p.received_by = u.id
-      WHERE p.rental_id = ?
-      ORDER BY p.created_at DESC
-    `, [rentalId]);
-    
+
+    // Get payments for this rental
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('rental_id', rental.id)
+      .order('created_at', { ascending: false });
+
     return NextResponse.json({
-      ...rental,
-      payments
+      rental: {
+        ...rental,
+        payments: payments || []
+      }
     });
   } catch (error) {
-    console.error('Error fetching rental details:', error);
+    console.error('Error in get rental:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch rental details' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
 }
 
 // Update a rental - Admin only
-async function updateRental(request: AuthenticatedRequest) {
-  // Only admins can update rental details
-  if (request.user?.role !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-  }
-  
+async function updateRental(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {
-    const rentalId = request.params?.id;
-    if (!rentalId) {
+    const body = await request.json();
+    const { start_date, end_date, status, notes } = body;
+
+    // Validate required fields
+    if (!start_date || !end_date) {
       return NextResponse.json(
-        { error: 'Rental ID is required' },
+        { error: 'Start date and end date are required' },
         { status: 400 }
       );
     }
-    
-    const db = await getDB();
-    
-    // Check if rental exists
-    const rental = await db.get('SELECT * FROM rentals WHERE id = ?', [rentalId]);
-    if (!rental) {
+
+    // Update rental
+    const { data: rental, error } = await supabase
+      .from('rentals')
+      .update({
+        start_date,
+        end_date,
+        status,
+        notes,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating rental:', error);
       return NextResponse.json(
-        { error: 'Rental not found' },
-        { status: 404 }
+        { error: 'Failed to update rental' },
+        { status: 500 }
       );
     }
-    
-    const data = await request.json();
-    
-    // Start transaction
-    await db.run('BEGIN TRANSACTION');
-    
-    try {
-      // Fields that can be updated
-      const updatableFields = [
-        'vehicle_id', 'start_date', 'end_date', 'status', 
-        'base_price', 'additional_charges', 'discount', 'total_amount',
-        'payment_status', 'payment_method', 'notes'
-      ];
-      
-      const updates = [];
-      const params = [];
-      
-      for (const field of updatableFields) {
-        if (data[field] !== undefined) {
-          updates.push(`${field} = ?`);
-          params.push(data[field]);
-        }
-      }
-      
-      // Always add updated_at
-      updates.push('updated_at = datetime("now")');
-      
-      // If no fields to update, just return success
-      if (updates.length <= 1) { // Only updated_at
-        await db.run('ROLLBACK');
-        return NextResponse.json({ message: 'No fields to update' });
-      }
-      
-      // Add rental ID to params
-      params.push(rentalId);
-      
-      // Update rental
-      await db.run(
-        `UPDATE rentals SET ${updates.join(', ')} WHERE id = ?`,
-        params
-      );
-      
-      // If vehicle_id was changed, update old and new vehicle statuses
-      if (data.vehicle_id !== undefined && data.vehicle_id !== rental.vehicle_id) {
-        // Set old vehicle to available
-        if (rental.vehicle_id) {
-          await db.run(
-            'UPDATE vehicles SET status = ? WHERE id = ?',
-            ['available', rental.vehicle_id]
-          );
-        }
-        
-        // Set new vehicle to rented
-        if (data.vehicle_id) {
-          await db.run(
-            'UPDATE vehicles SET status = ? WHERE id = ?',
-            ['rented', data.vehicle_id]
-          );
-        }
-      }
-      
-      // Update customer information if provided
-      if (data.customer && rental.customer_id) {
-        const customerUpdates = [];
-        const customerParams = [];
-        
-        const updatableCustomerFields = [
-          'first_name', 'last_name', 'email', 'phone',
-          'father_phone', 'mother_phone', 'emergency_contact1', 'emergency_contact2',
-          'address', 'id_type', 'id_number', 'notes'
-        ];
-        
-        for (const field of updatableCustomerFields) {
-          if (data.customer[field] !== undefined) {
-            customerUpdates.push(`${field} = ?`);
-            customerParams.push(data.customer[field]);
-          }
-        }
-        
-        if (customerUpdates.length > 0) {
-          // Add updated_at
-          customerUpdates.push('updated_at = datetime("now")');
-          
-          // Add customer ID
-          customerParams.push(rental.customer_id);
-          
-          // Update customer
-          await db.run(
-            `UPDATE customers SET ${customerUpdates.join(', ')} WHERE id = ?`,
-            customerParams
-          );
-        }
-      }
-      
-      await db.run('COMMIT');
-      
-      return NextResponse.json({ 
-        message: 'Rental updated successfully',
-        id: rentalId
-      });
-    } catch (error) {
-      await db.run('ROLLBACK');
-      throw error;
-    }
+
+    return NextResponse.json({ rental });
   } catch (error) {
-    console.error('Error updating rental:', error);
+    console.error('Error in update rental:', error);
     return NextResponse.json(
-      { error: 'Failed to update rental' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
 }
 
 // Delete a rental - Admin only
-async function deleteRental(request: AuthenticatedRequest) {
-  // Only admins can delete rentals
-  if (request.user?.role !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-  }
-  
+async function deleteRental(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {
-    const rentalId = request.params?.id;
-    if (!rentalId) {
+    // Check if rental has any payments
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('rental_id', params.id);
+
+    if (payments && payments.length > 0) {
       return NextResponse.json(
-        { error: 'Rental ID is required' },
+        { error: 'Cannot delete rental with associated payments' },
         { status: 400 }
       );
     }
-    
-    const db = await getDB();
-    
-    // Start transaction
-    await db.run('BEGIN TRANSACTION');
-    
-    try {
-      // Check if rental exists
-      const rental = await db.get('SELECT * FROM rentals WHERE id = ?', [rentalId]);
-      
-      if (!rental) {
-        await db.run('ROLLBACK');
-        return NextResponse.json(
-          { error: 'Rental not found' },
-          { status: 404 }
-        );
-      }
-      
-      // Check if there are payments for this rental
-      const payments = await db.get(
-        'SELECT COUNT(*) as count FROM payments WHERE rental_id = ?',
-        [rentalId]
+
+    const { error } = await supabase
+      .from('rentals')
+      .delete()
+      .eq('id', params.id);
+
+    if (error) {
+      console.error('Error deleting rental:', error);
+      return NextResponse.json(
+        { error: 'Failed to delete rental' },
+        { status: 500 }
       );
-      
-      if (payments.count > 0) {
-        await db.run('ROLLBACK');
-        return NextResponse.json(
-          { error: 'Cannot delete rental with payment records. Cancel it instead.' },
-          { status: 400 }
-        );
-      }
-      
-      // Update vehicle status back to available if applicable
-      if (rental.vehicle_id) {
-        await db.run(
-          'UPDATE vehicles SET status = ? WHERE id = ?',
-          ['available', rental.vehicle_id]
-        );
-      }
-      
-      // Delete the rental
-      await db.run('DELETE FROM rentals WHERE id = ?', [rentalId]);
-      
-      await db.run('COMMIT');
-      
-      return NextResponse.json({ 
-        message: 'Rental deleted successfully'
-      });
-    } catch (error) {
-      await db.run('ROLLBACK');
-      throw error;
     }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Rental deleted successfully'
+    });
   } catch (error) {
-    console.error('Error deleting rental:', error);
+    console.error('Error in delete rental:', error);
     return NextResponse.json(
-      { error: 'Failed to delete rental' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
