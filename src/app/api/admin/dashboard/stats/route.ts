@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase, TABLES } from '@/lib/supabase';
 import { withRoleCheck } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
+import { dynamic, revalidate } from '../../../config';
 
 async function handler(req: AuthenticatedRequest) {
   try {

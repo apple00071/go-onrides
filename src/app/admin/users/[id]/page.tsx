@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
@@ -31,46 +31,26 @@ export default function UserPage({ params }: UserDetailsProps) {
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
-  const fetchUserDetails = async () => {
+  const fetchUserDetails = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/users/${id}`, {
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        }
-      });
-      
+      const response = await fetch(`/api/admin/users/${params.id}`);
       if (!response.ok) {
-        const data = await response.json();
-        if (response.status === 404) {
-          throw new Error('User not found');
-        } else if (response.status === 401) {
-          throw new Error('Please log in to view user details');
-        } else if (response.status === 403) {
-          throw new Error('You do not have permission to view user details');
-        }
-        throw new Error(data.error || 'Failed to fetch user details');
+        throw new Error('Failed to fetch user details');
       }
-      
       const data = await response.json();
       setUser(data);
-    } catch (err) {
-      console.error('Error fetching user:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+    } catch (error) {
+      console.error('Error fetching user details:', error);
+      setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [params.id]);
   
   useEffect(() => {
-    if (id) {
-      fetchUserDetails();
-    } else {
-      setError('User ID is required');
-    }
-  }, [id]);
+    fetchUserDetails();
+  }, [fetchUserDetails]);
   
   const handleDelete = async () => {
     try {

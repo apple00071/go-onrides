@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
+import { dynamic, revalidate } from '../config';
 
 async function getReports(request: AuthenticatedRequest) {
   try {

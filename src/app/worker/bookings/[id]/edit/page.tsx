@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { formatDate } from '@/lib/format';
 import { Booking } from '@/types';
@@ -28,37 +28,37 @@ export default function EditBookingPage() {
     payment_status: ''
   });
 
-  useEffect(() => {
-    fetchBookingDetails();
-  }, []);
-
-  const fetchBookingDetails = async () => {
+  const fetchBookingDetails = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/bookings/${params.id}`);
+      const response = await fetch(`/api/worker/bookings/${params.id}`);
       if (!response.ok) {
         throw new Error('Failed to fetch booking details');
       }
       const data = await response.json();
-      setBooking(data.booking);
+      setBooking(data);
       
-      if (!data.booking) return;
+      if (!data) return;
       
       // Initialize form data
       setFormData({
-        start_date: data.booking.start_date.slice(0, 16), // Format for datetime-local input
-        end_date: data.booking.end_date.slice(0, 16),
-        total_amount: data.booking.total_amount,
-        status: data.booking.status,
-        payment_status: data.booking.payment_status
+        start_date: data.start_date.slice(0, 16), // Format for datetime-local input
+        end_date: data.end_date.slice(0, 16),
+        total_amount: data.total_amount,
+        status: data.status,
+        payment_status: data.payment_status
       });
     } catch (error) {
       console.error('Error fetching booking details:', error);
-      setError('Failed to load booking details');
+      setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id]);
+
+  useEffect(() => {
+    fetchBookingDetails();
+  }, [fetchBookingDetails]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

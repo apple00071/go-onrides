@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
+import { dynamic, revalidate } from '../../config';
 
 async function handler(request: AuthenticatedRequest) {
   try {
@@ -20,7 +21,7 @@ async function handler(request: AuthenticatedRequest) {
     if (request.user.id) {
       const db = await getDB();
       const userData = await db.get(
-        `SELECT u.id, u.email, u.full_name, u.role, u.status, u.created_at, u.last_login_at,
+        `SELECT u.id, u.email, u.full_name, u.role, u.status, u.created_at, u.last_login_at_at_at_at,
                 u.permissions
          FROM users u
          WHERE u.id = ?`,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
@@ -41,32 +41,26 @@ export default function CustomerEditPage({ params }: CustomerEditProps) {
     phone: '',
   });
 
-  useEffect(() => {
-    fetchCustomerDetails();
-  }, [params.id]);
-
-  const fetchCustomerDetails = async () => {
+  const fetchCustomerDetails = useCallback(async () => {
     try {
-      const response = await fetch(`/api/customers/${params.id}`, {
-        credentials: 'include'
-      });
-      
+      setLoading(true);
+      const response = await fetch(`/api/worker/customers/${params.id}`);
       if (!response.ok) {
         throw new Error('Failed to fetch customer details');
       }
-
       const data = await response.json();
-      if (data.success) {
-        setFormData(data.customer);
-      } else {
-        throw new Error(data.error || 'Failed to fetch customer details');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setFormData(data.customer);
+    } catch (error) {
+      console.error('Error fetching customer details:', error);
+      setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id]);
+
+  useEffect(() => {
+    fetchCustomerDetails();
+  }, [fetchCustomerDetails]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

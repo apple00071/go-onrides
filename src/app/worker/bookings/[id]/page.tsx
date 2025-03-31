@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { formatDate, formatCurrency } from '@/lib/format';
 import { getStatusColor } from '@/lib/utils';
@@ -26,26 +26,26 @@ export default function BookingDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchBookingDetails();
-  }, []);
-
-  const fetchBookingDetails = async () => {
+  const fetchBookingDetails = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/bookings/${params.id}`);
+      const response = await fetch(`/api/worker/bookings/${params.id}`);
       if (!response.ok) {
         throw new Error('Failed to fetch booking details');
       }
       const data = await response.json();
-      setBooking(data.booking);
+      setBooking(data);
     } catch (error) {
       console.error('Error fetching booking details:', error);
-      setError('Failed to load booking details');
+      setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id]);
+
+  useEffect(() => {
+    fetchBookingDetails();
+  }, [fetchBookingDetails]);
 
   const handleReturnBooking = async () => {
     try {

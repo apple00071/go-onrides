@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
 import { formatCurrency } from '@/lib/format';
@@ -43,28 +43,26 @@ export default function VehicleDetailsPage({ params }: VehicleDetailsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchVehicleDetails();
-  }, [params.id]);
-
-  const fetchVehicleDetails = async () => {
+  const fetchVehicleDetails = useCallback(async () => {
     try {
-      const response = await fetch(`/api/vehicles/${params.id}`, {
-        credentials: 'include'
-      });
-      
+      setLoading(true);
+      const response = await fetch(`/api/worker/vehicles/${params.id}`);
       if (!response.ok) {
         throw new Error('Failed to fetch vehicle details');
       }
-
       const data = await response.json();
-      setVehicle(data.vehicle);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setVehicle(data);
+    } catch (error) {
+      console.error('Error fetching vehicle details:', error);
+      setError(error instanceof Error ? error.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id]);
+
+  useEffect(() => {
+    fetchVehicleDetails();
+  }, [fetchVehicleDetails]);
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorAlert message={error} />;

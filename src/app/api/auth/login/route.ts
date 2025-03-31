@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { generateAuthToken, setAuthCookie, isDevelopment } from '@/lib/auth';
 import { dbAdapter } from '@/lib/db-adapter';
 import type { User } from '@/types';
+import { dynamic, revalidate } from '../../config';
 
 // Define the type for database users that includes password
 interface DBUser extends Omit<User, 'permissions'> {
