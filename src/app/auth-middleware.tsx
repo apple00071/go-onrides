@@ -14,45 +14,44 @@ export default function ClientAuthMiddleware({
   children,
   requiredRole,
 }: ClientAuthMiddlewareProps) {
-  const { user, loading, checkAuth } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
-    const verifyAuth = async () => {
-      // If we're already loading auth state from the provider, wait for it
-      if (loading) return;
+    // If still loading authentication state, wait for it
+    if (loading) {
+      return;
+    }
 
-      // Check if we're on login/register page
-      const isAuthPage = pathname === '/login' || pathname === '/register';
+    // Check if we're on login/register page
+    const isAuthPage = pathname === '/login' || pathname === '/register';
 
+    // Logic to handle different auth scenarios
+    const handleAuthRedirects = () => {
       // If authenticated and on auth page, redirect to appropriate dashboard
       if (user && isAuthPage) {
         router.push(user.role === 'admin' ? '/admin/dashboard' : '/worker/dashboard');
-        return;
+        return true; // Returning true indicates a redirect occurred
       }
 
       // If not authenticated and not on auth page, redirect to login
       if (!user && !isAuthPage) {
-        // Force a fresh auth check before deciding to redirect
-        const isAuthenticated = await checkAuth();
-        if (!isAuthenticated) {
-          router.push(`/login?redirect=${encodeURIComponent(pathname || '')}`);
-          return;
-        }
+        router.push(`/login?from=${encodeURIComponent(pathname || '')}`);
+        return true;
       }
 
       // Handle worker trying to access admin area
       if (user?.role === 'worker' && pathname?.startsWith('/admin')) {
         router.push('/worker/dashboard');
-        return;
+        return true;
       }
 
       // Handle admin trying to access worker area
       if (user?.role === 'admin' && pathname?.startsWith('/worker')) {
         router.push('/admin/dashboard');
-        return;
+        return true;
       }
 
       // Check if user has the required role
@@ -63,14 +62,17 @@ export default function ClientAuthMiddleware({
         } else {
           router.push('/unauthorized');
         }
-        return;
+        return true;
       }
 
-      setIsVerifying(false);
+      return false; // No redirect occurred
     };
 
-    verifyAuth();
-  }, [user, loading, pathname, router, checkAuth, requiredRole]);
+    // If we don't need to redirect, we can stop verifying
+    if (!handleAuthRedirects() && isVerifying) {
+      setIsVerifying(false);
+    }
+  }, [user, loading, pathname, router, requiredRole, isVerifying]);
 
   // Show loading spinner while verifying auth
   if (loading || isVerifying) {

@@ -41,4 +41,34 @@ export function formatDate(date: string): string {
     month: "long",
     day: "numeric",
   }).format(new Date(date));
-} 
+}
+
+/**
+ * Transforms customer data to fit database schema requirements
+ * This helps handle discrepancies between UI form data and database schema
+ */
+export const transformCustomerData = (customerDetails: any) => {
+  // If the data already has full_name, use it
+  if (customerDetails.full_name) {
+    return customerDetails;
+  }
+  
+  // If we have first_name and last_name, combine them
+  if (customerDetails.first_name && customerDetails.last_name) {
+    return {
+      ...customerDetails,
+      full_name: `${customerDetails.first_name} ${customerDetails.last_name}`.trim()
+    };
+  }
+  
+  // If we have fullName, use it as full_name
+  if (customerDetails.fullName) {
+    return {
+      ...customerDetails,
+      full_name: customerDetails.fullName,
+    };
+  }
+  
+  // Default case - just return the original data
+  return customerDetails;
+}; 

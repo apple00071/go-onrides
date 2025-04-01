@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
-export default function Home() {
+export default function NewBookingRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
@@ -14,9 +14,9 @@ export default function Home() {
       try {
         const user = JSON.parse(userStr);
         if (user.role === 'admin') {
-          router.push('/admin/bookings');
+          router.push('/admin/bookings/new');
         } else if (user.role === 'worker') {
-          router.push('/worker/bookings');
+          router.push('/worker/bookings/new');
         } else {
           router.push('/login');
         }
@@ -31,7 +31,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <LoadingSpinner size="lg" />
+      <div className="text-center">
+        <LoadingSpinner size="lg" />
+        <p className="mt-4 text-gray-600">Redirecting to the booking form...</p>
+      </div>
     </div>
   );
-}
+} 

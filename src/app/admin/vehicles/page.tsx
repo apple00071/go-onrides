@@ -34,7 +34,6 @@ export default function VehiclesPage() {
       if (!isRefreshing) { // Only set isLoading on initial load, not refreshes
         setIsLoading(true);
       }
-      setIsRefreshing(true);
       
       const response = await fetch('/api/vehicles', {
         // Add cache busting to ensure we get fresh data
@@ -69,7 +68,7 @@ export default function VehiclesPage() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [isRefreshing]); // Include isRefreshing as a dependency
+  }, []); // Remove isRefreshing from dependencies to break the cycle
 
   useEffect(() => {
     fetchVehicles();
@@ -84,7 +83,7 @@ export default function VehiclesPage() {
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [fetchVehicles]); // Include fetchVehicles in the dependency array
+  }, [fetchVehicles]); // This dependency is fine since fetchVehicles now has a stable identity
 
   const handleRefresh = () => {
     setIsRefreshing(true);

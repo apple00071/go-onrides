@@ -1,20 +1,25 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { dynamic } from '../../config';
 
-// Set runtime and dynamic options explicitly as string literals
-export const dynamic = 'force-dynamic';
+// Set the environment for server-side rendering
 export const runtime = 'nodejs';
+export { dynamic };
 
 export async function POST() {
   try {
-    // Clear the auth cookie
-    cookies().delete('token');
+    // Clear the authentication cookie
+    const cookieStore = cookies();
+    cookieStore.delete('token');
+    
+    // Also clear adminToken if it exists
+    cookieStore.delete('adminToken');
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to logout' },
+      { success: false, error: 'Logout failed' },
       { status: 500 }
     );
   }

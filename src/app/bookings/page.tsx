@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
-export default function Home() {
+export default function BookingsRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
@@ -31,7 +31,10 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <LoadingSpinner size="lg" />
+      <div className="text-center">
+        <LoadingSpinner size="lg" />
+        <p className="mt-4 text-gray-600">Redirecting to your booking page...</p>
+      </div>
     </div>
   );
-}
+} 

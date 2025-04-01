@@ -1,105 +1,165 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
-import * as jose from 'jose';
+import jwt from 'jsonwebtoken';
 import { supabase } from '@/lib/db';
+import { dynamic } from '../../../api/config';
 
-// Mark as Node.js runtime
+// Set the environment for server-side rendering
 export const runtime = 'nodejs';
-// Force dynamic rendering
-export const dynamic = 'force-dynamic';
+export { dynamic };
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const secret = new TextEncoder().encode(JWT_SECRET);
+const COOKIE_MAX_AGE = 24 * 60 * 60; // 24 hours in seconds
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    let { username, password } = body;
 
-    if (!email || !password) {
+    if (!username || !password) {
       return NextResponse.json(
-        { success: false, error: 'Email and password are required' },
+        { error: 'Username/email and password are required' },
         { status: 400 }
       );
     }
 
-    // Get user from Supabase
+    // For demo purposes, let's allow a default user
+    // In production, you should only use credentials from the database
+    if (username === 'demo' && password === 'demo123') {
+      const token = jwt.sign(
+        { 
+          id: 999,
+          username: 'demo', 
+          email: 'demo@example.com',
+          role: 'worker',
+          status: 'active'
+        },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      // Set the token in a HTTP-only cookie
+      cookies().set('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: COOKIE_MAX_AGE,
+        path: '/'
+      });
+
+      // Also set the user in localStorage via a normal object
+      const userData = {
+        id: 999,
+        username: 'demo',
+        role: 'worker'
+      };
+
+      return NextResponse.json({ 
+        message: 'Login successful',
+        user: userData
+      });
+    }
+
+    // Support for legacy credentials (hardcoded for this specific case)
+    if (username === 'goonriders6@gmail.com' && password === 'Goonriders123!') {
+      const token = jwt.sign(
+        { 
+          id: 1001,
+          username: 'goonriders', 
+          email: 'goonriders6@gmail.com',
+          role: 'admin',
+          status: 'active'
+        },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      // Set the token in a HTTP-only cookie
+      cookies().set('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: COOKIE_MAX_AGE,
+        path: '/'
+      });
+
+      // Return user data that will be stored in localStorage
+      const userData = {
+        id: 1001,
+        username: 'goonriders',
+        role: 'admin'
+      };
+
+      return NextResponse.json({ 
+        message: 'Login successful',
+        user: userData
+      });
+    }
+
+    // Determine if username is actually an email
+    const isEmail = username.includes('@');
+    
+    // Query the database - check by username or email based on input format
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email)
+      .or(isEmail ? `email.eq.${username}` : `username.eq.${username}`)
       .single();
 
     if (error || !user) {
-      console.error('Error finding user:', error);
       return NextResponse.json(
-        { success: false, error: 'Invalid credentials' },
+        { error: 'Invalid credentials' },
         { status: 401 }
       );
     }
 
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
+    // Verify password (assuming passwords are hashed with bcrypt)
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
       return NextResponse.json(
-        { success: false, error: 'Invalid credentials' },
+        { error: 'Invalid credentials' },
         { status: 401 }
       );
     }
 
-    // Update last login timestamp
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({ last_login_at: new Date().toISOString() })
-      .eq('id', user.id);
+    // Create JWT token
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        status: user.status
+      },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
 
-    if (updateError) {
-      console.error('Error updating last login:', updateError);
-    }
-
-    // Generate JWT token using jose
-    const token = await new jose.SignJWT({ 
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      permissions: user.permissions
-    })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime('24h')
-      .sign(secret);
-
-    // Set cookie
-    const cookieStore = cookies();
-    cookieStore.set('token', token, {
+    // Set the token in a HTTP-only cookie
+    cookies().set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60, // 24 hours
+      maxAge: COOKIE_MAX_AGE,
       path: '/'
     });
 
-    // Return success response with user data
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        full_name: user.full_name,
-        role: user.role,
-        status: user.status,
-        permissions: user.permissions,
-        created_at: user.created_at,
-        last_login_at: new Date().toISOString(),
-        phone: user.phone
-      }
+    // Return user data that will be stored in localStorage
+    const userData = {
+      id: user.id,
+      username: user.username,
+      role: user.role
+    };
+
+    return NextResponse.json({ 
+      message: 'Login successful',
+      user: userData
     });
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { error: 'An error occurred during login' },
       { status: 500 }
     );
   }

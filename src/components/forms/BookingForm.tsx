@@ -215,7 +215,7 @@ const TimeSelector = ({
   const eveningTimes = timeOptions.slice(36); // 6pm to 11:30pm
   
   return (
-    <div className="relative">
+    <div className="relative inline-block w-full">
       <button
         ref={buttonRef}
         type="button"
@@ -243,69 +243,60 @@ const TimeSelector = ({
           className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-xl z-50"
           style={{ maxHeight: '280px', overflowY: 'auto' }}
         >
-          <div className="time-selector-container">
-            {/* Morning Times */}
-            <div className="sticky top-0 border-b border-gray-100 py-2 px-3 bg-gray-50">
+          <div className="grid grid-cols-3 gap-1 p-2">
+            <div className="col-span-3 border-b border-gray-100 py-1 px-2 bg-gray-50 mb-1">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Morning</span>
             </div>
-            <div className="grid grid-cols-3 gap-1 p-2">
-              {morningTimes.map((time, index) => (
-                <button
-                  key={`morning-${index}`}
-                  type="button"
-                  className={`text-center py-2 px-1 text-sm rounded-md transition-colors ${
-                    isTimeSelected(time.hour, time.minute)
-                      ? 'bg-orange-600 text-white font-medium shadow-sm'
-                      : 'text-gray-700 hover:bg-orange-50'
-                  }`}
-                  onClick={() => handleTimeSelect(time.hour, time.minute)}
-                >
-                  {time.display}
-                </button>
-              ))}
-            </div>
+            {morningTimes.map((time, index) => (
+              <button
+                key={`morning-${index}`}
+                type="button"
+                className={`text-center py-1 px-1 text-xs rounded-md transition-colors ${
+                  isTimeSelected(time.hour, time.minute)
+                    ? 'bg-orange-600 text-white font-medium shadow-sm'
+                    : 'text-gray-700 hover:bg-orange-50'
+                }`}
+                onClick={() => handleTimeSelect(time.hour, time.minute)}
+              >
+                {time.display}
+              </button>
+            ))}
             
-            {/* Afternoon Times */}
-            <div className="sticky top-0 border-b border-t border-gray-100 py-2 px-3 bg-gray-50">
+            <div className="col-span-3 border-b border-t border-gray-100 py-1 px-2 bg-gray-50 my-1">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Afternoon</span>
             </div>
-            <div className="grid grid-cols-3 gap-1 p-2">
-              {afternoonTimes.map((time, index) => (
-                <button
-                  key={`afternoon-${index}`}
-                  type="button"
-                  className={`text-center py-2 px-1 text-sm rounded-md transition-colors ${
-                    isTimeSelected(time.hour, time.minute)
-                      ? 'bg-orange-600 text-white font-medium shadow-sm'
-                      : 'text-gray-700 hover:bg-orange-50'
-                  }`}
-                  onClick={() => handleTimeSelect(time.hour, time.minute)}
-                >
-                  {time.display}
-                </button>
-              ))}
-            </div>
+            {afternoonTimes.map((time, index) => (
+              <button
+                key={`afternoon-${index}`}
+                type="button"
+                className={`text-center py-1 px-1 text-xs rounded-md transition-colors ${
+                  isTimeSelected(time.hour, time.minute)
+                    ? 'bg-orange-600 text-white font-medium shadow-sm'
+                    : 'text-gray-700 hover:bg-orange-50'
+                }`}
+                onClick={() => handleTimeSelect(time.hour, time.minute)}
+              >
+                {time.display}
+              </button>
+            ))}
             
-            {/* Evening Times */}
-            <div className="sticky top-0 border-b border-t border-gray-100 py-2 px-3 bg-gray-50">
+            <div className="col-span-3 border-b border-t border-gray-100 py-1 px-2 bg-gray-50 my-1">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Evening</span>
             </div>
-            <div className="grid grid-cols-3 gap-1 p-2">
-              {eveningTimes.map((time, index) => (
-                <button
-                  key={`evening-${index}`}
-                  type="button"
-                  className={`text-center py-2 px-1 text-sm rounded-md transition-colors ${
-                    isTimeSelected(time.hour, time.minute)
-                      ? 'bg-orange-600 text-white font-medium shadow-sm'
-                      : 'text-gray-700 hover:bg-orange-50'
-                  }`}
-                  onClick={() => handleTimeSelect(time.hour, time.minute)}
-                >
-                  {time.display}
-                </button>
-              ))}
-            </div>
+            {eveningTimes.map((time, index) => (
+              <button
+                key={`evening-${index}`}
+                type="button"
+                className={`text-center py-1 px-1 text-xs rounded-md transition-colors ${
+                  isTimeSelected(time.hour, time.minute)
+                    ? 'bg-orange-600 text-white font-medium shadow-sm'
+                    : 'text-gray-700 hover:bg-orange-50'
+                }`}
+                onClick={() => handleTimeSelect(time.hour, time.minute)}
+              >
+                {time.display}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -529,25 +520,53 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
     setError(null);
 
     try {
-      // Validate required fields
+      console.log("Form submission initiated");
+      
+      // Validate vehicle selection
       if (!formData.vehicle_id) {
         toast.error('Please select a vehicle');
+        console.log("Validation failed: No vehicle selected");
         return;
       }
 
-      if (!isNewCustomer && !formData.selectedCustomerId && !selectedCustomer) {
-        toast.error('Please search and select an existing customer');
+      // Validate customer information
+      if (!formData.fullName || !formData.email || !formData.phone) {
+        toast.error('Please fill in all required customer information');
+        console.log("Validation failed: Missing customer details");
         return;
       }
 
       // Validate dates
       if (!formData.start_date || !formData.end_date) {
-        toast.error('Please select valid dates and times');
+        toast.error('Please select valid start and end dates/times');
+        console.log("Validation failed: Missing date/time selection");
         return;
       }
 
       if (formData.end_date <= formData.start_date) {
         toast.error('End date must be after start date');
+        console.log("Validation failed: End date is not after start date");
+        return;
+      }
+
+      // Validate base rate and deposit
+      if (!formData.baseRate || formData.baseRate <= 0) {
+        toast.error('Please enter a valid base rate');
+        console.log("Validation failed: Invalid base rate");
+        return;
+      }
+
+      // Make security deposit optional - allowing 0 or null values
+      if (formData.securityDeposit !== null && formData.securityDeposit !== 0 && formData.securityDeposit < 0) {
+        toast.error('Security deposit cannot be negative');
+        console.log("Validation failed: Invalid security deposit");
+        return;
+      }
+
+      // Validate terms acceptance
+      if (!formData.termsAccepted) {
+        toast.error('Please accept the terms and conditions');
+        console.log("Validation failed: Terms not accepted");
         return;
       }
 
@@ -561,99 +580,81 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
 
       // Get signature data if available
       const signatureData = signaturePadRef.current?.toDataURL();
+      if (!signatureData) {
+        toast.error('Please sign the booking form');
+        console.log("Validation failed: Missing signature");
+        return;
+      }
 
-      // Prepare base booking data
+      // Check for required document uploads
+      const requiredDocs = ['photo', 'dl_front', 'dl_back', 'aadhar_front', 'aadhar_back'];
+      const missingDocs = requiredDocs.filter(doc => !documents[doc as keyof Documents]);
+      
+      if (missingDocs.length > 0) {
+        toast.error(`Please upload all required documents: ${missingDocs.join(', ').replace(/_/g, ' ')}`);
+        console.log("Validation failed: Missing documents", missingDocs);
+        return;
+      }
+
+      // Prepare booking data
       const bookingData: any = {
         vehicle_id: formData.vehicle_id,
         start_date: startDate.toISOString(),
         end_date: endDate.toISOString(),
-        base_price: parseFloat(formData.pricing.base_price.toString()) || 0,
-        discount: parseFloat(formData.pricing.discount.toString()) || 0,
+        customer_details: {
+          full_name: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          address: formData.address,
+          city: formData.city,
+          state: formData.state,
+          pincode: formData.pincode,
+          dl_number: formData.dlNumber,
+          dl_expiry: formData.dlExpiryDate?.toISOString(),
+          dob: formData.dob?.toISOString(),
+          aadhar_number: formData.aadhaarNumber
+        },
+        pricing: {
+          base_price: parseFloat(formData.baseRate.toString()),
+          security_deposit: formData.securityDeposit ? parseFloat(formData.securityDeposit.toString()) : 0,
+          total_amount: calculateTotal()
+        },
         payment_method: formData.payment_method,
         notes: formData.notes,
-        signature: signatureData
+        documents: documents,
+        signature: signatureData,
+        terms_accepted: formData.termsAccepted
       };
 
-      console.log('Submitting booking with dates:', {
-        start: startDate.toISOString(), 
-        end: endDate.toISOString()
+      console.log('Submitting booking with data:', {
+        vehicle_id: bookingData.vehicle_id,
+        dates: {
+          start: bookingData.start_date,
+          end: bookingData.end_date
+        },
+        customer: bookingData.customer_details.full_name
       });
-
-      // Handle new customer case
-      if (isNewCustomer) {
-        // Validate required fields for new customer
-        const requiredFields = ['first_name', 'last_name', 'phone', 'email', 'address', 'city', 'state', 'pincode', 'dl_number', 'aadhar_number'];
-        const missingFields = requiredFields.filter(field => !customerDetails[field as keyof CustomerDetails]);
-        
-        if (missingFields.length > 0) {
-          toast.error(`Please fill in all required customer fields: ${missingFields.join(', ')}`);
-          return;
-        }
-
-        // Validate required documents for new customer
-        const requiredDocs = ['photo', 'dl_front', 'dl_back', 'aadhar_front', 'aadhar_back'];
-        const missingDocs = requiredDocs.filter(doc => !documents[doc as keyof Documents]);
-        
-        if (missingDocs.length > 0) {
-          toast.error(`Please upload all required documents: ${missingDocs.join(', ')}`);
-          return;
-        }
-
-        if (!signatureData) {
-          toast.error('Please add customer signature');
-          return;
-        }
-
-        bookingData.customer_details = customerDetails;
-        bookingData.documents = documents;
-        bookingData.is_new_customer = true;
-      } else {
-        // For existing customer
-        if (!selectedCustomer) {
-          toast.error('Please select a customer');
-          return;
-        }
-        
-        bookingData.customer_id = selectedCustomer.id;
-        bookingData.is_new_customer = false;
-
-        // Add any updated documents if provided
-        const updatedDocs: Partial<Documents> = {};
-        let hasUpdatedDocs = false;
-
-        Object.entries(documents).forEach(([key, value]) => {
-          if (value) {
-            updatedDocs[key as keyof Documents] = value;
-            hasUpdatedDocs = true;
-          }
-        });
-
-        if (hasUpdatedDocs) {
-          bookingData.documents = updatedDocs;
-        }
-      }
-
-      // Validate terms acceptance
-      if (!acceptedTerms) {
-        toast.error('Please accept the terms and conditions');
-        return;
-      }
 
       setIsLoading(true);
       
       // Send the form data to the server
-      const response = await onSubmit?.(bookingData);
-      
-      if (response && 'success' in response && !response.success) {
-        throw new Error(response.error || 'Failed to submit booking');
+      if (typeof onSubmit === 'function') {
+        const response = await onSubmit(bookingData);
+        
+        if (response && 'success' in response && !response.success) {
+          throw new Error(response.error || 'Failed to submit booking');
+        }
+        
+        toast.success('Booking submitted successfully');
+        
+        // Clear form or redirect as needed
+        setTimeout(() => {
+          router.push('/bookings');
+        }, 1500);
+      } else {
+        console.error('onSubmit is not a function', onSubmit);
+        throw new Error('Form submission handler is not properly configured');
       }
-      
-      toast.success('Booking submitted successfully');
-      
-      // Clear form or redirect as needed
-      setTimeout(() => {
-        router.push('/bookings');
-      }, 1500);
       
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -1136,14 +1137,13 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
             
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
-                Security Deposit (₹) <span className="text-red-500">*</span>
+                Security Deposit (₹)
               </label>
               <input
                 type="number"
                 name="securityDeposit"
                 value={formData.securityDeposit}
                 onChange={handleInputChange}
-                required
                 placeholder="0.00"
                 className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
               />
@@ -1424,7 +1424,7 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
           
           <div className="h-24 overflow-y-auto p-2 mb-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
             <p>1. Renter must be at least 18 years old with a valid driving license.</p>
-            <p>2. Security deposit is refundable subject to vehicle condition upon return.</p>
+            <p>2. Security deposit (if applicable) is refundable subject to vehicle condition upon return.</p>
             <p>3. Fuel expenses are to be borne by the renter.</p>
             <p>4. Renter is responsible for any traffic violations or fines during the rental period.</p>
             <p>5. Vehicle must be returned in the same condition as received.</p>
