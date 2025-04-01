@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { initializeSupabaseSchema } from '@/lib/init-supabase';
 import { isDevelopment } from '@/lib/supabase';
 
+// Set runtime and dynamic options explicitly as string literals
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 /**
  * API endpoint to initialize the database schema
  * Only works in development mode for safety
