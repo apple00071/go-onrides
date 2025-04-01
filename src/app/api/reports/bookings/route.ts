@@ -102,7 +102,7 @@ async function handler(request: AuthenticatedRequest) {
       const end = new Date(booking.end_date);
       const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       
-      let duration;
+      let duration: string;
       if (days <= 1) duration = '1 day';
       else if (days <= 3) duration = '2-3 days';
       else if (days <= 7) duration = '4-7 days';

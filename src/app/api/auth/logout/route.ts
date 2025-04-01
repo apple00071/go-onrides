@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { dynamic, runtime } from '@/app/api/config';
 
-export { dynamic, runtime };
+// Set runtime and dynamic options explicitly as string literals
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function POST() {
   try {
