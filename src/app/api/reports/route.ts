@@ -9,11 +9,16 @@ export const runtime = 'nodejs';
 
 async function handler(request: AuthenticatedRequest) {
   try {
+    console.log('Reports API called with user:', request.user?.role);
+    
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
+    
+    console.log('Reports API params:', { startDate, endDate });
 
     if (!startDate || !endDate) {
+      console.error('Missing required date parameters');
       return NextResponse.json(
         { error: 'Start date and end date are required' },
         { status: 400 }
@@ -21,6 +26,7 @@ async function handler(request: AuthenticatedRequest) {
     }
 
     // Get total customers and identify new vs returning
+    console.log('Fetching customers data...');
     const { data: customers, error: customerError } = await supabase
       .from('customers')
       .select('id, created_at');
@@ -29,6 +35,8 @@ async function handler(request: AuthenticatedRequest) {
       console.error('Error fetching customers:', customerError);
       throw customerError;
     }
+    
+    console.log(`Found ${customers?.length || 0} customers`);
 
     const newCustomers = customers?.filter(c => 
       new Date(c.created_at) >= new Date(startDate) && 
@@ -125,7 +133,7 @@ async function handler(request: AuthenticatedRequest) {
       const end = new Date(booking.end_date);
       const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       
-      let duration;
+      let duration: string;
       if (days <= 1) duration = '1 day';
       else if (days <= 3) duration = '2-3 days';
       else if (days <= 7) duration = '4-7 days';
@@ -163,12 +171,20 @@ async function handler(request: AuthenticatedRequest) {
     });
   } catch (error) {
     console.error('Error generating report:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : '';
+    
+    console.error('Error details:', {
+      message: errorMessage,
+      stack: errorStack
+    });
+    
     return NextResponse.json(
-      { error: 'Failed to generate report' },
+      { error: `Failed to generate report: ${errorMessage}` },
       { status: 500 }
     );
   }
 }
 
 // Role check middleware to protect the route
-export const GET = withRoleCheck(handler, ['admin']); 
+export const GET = withRoleCheck(handler, ['admin', 'worker']); 

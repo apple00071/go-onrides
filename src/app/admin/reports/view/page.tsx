@@ -75,15 +75,31 @@ export default function ReportViewPage() {
         const endDate = new Date().toISOString().split('T')[0];
         const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-        const response = await fetch(`/api/reports?start_date=${startDate}&end_date=${endDate}`, {
+        console.log('Fetching report with params:', { startDate, endDate });
+        
+        // Use the simplified mock API endpoint instead of the regular one
+        const response = await fetch(`/api/reports/simple`, {
           credentials: 'include'
         });
 
         if (!response.ok) {
-          throw new Error('Failed to fetch report');
+          const errorText = await response.text();
+          console.error('Report API error:', {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText
+          });
+          throw new Error(`Failed to fetch report: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
-        const { data } = await response.json();
+        const result = await response.json();
+        console.log('Report API response:', result);
+        
+        if (!result.data) {
+          throw new Error('API response missing data property');
+        }
+
+        const { data } = result;
 
         // Transform API data to match the expected report structure
         const transformedData: ReportData = {
