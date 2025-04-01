@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
@@ -28,22 +28,8 @@ export default function VehiclesPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    fetchVehicles();
-
-    // Add an event listener for when the page regains focus (user navigates back)
-    const handleFocus = () => {
-      fetchVehicles();
-    };
-
-    window.addEventListener('focus', handleFocus);
-    
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
-
-  const fetchVehicles = async () => {
+  // Move fetchVehicles into useCallback to ensure it has a stable identity
+  const fetchVehicles = useCallback(async () => {
     try {
       if (!isRefreshing) { // Only set isLoading on initial load, not refreshes
         setIsLoading(true);
@@ -83,7 +69,22 @@ export default function VehiclesPage() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, [isRefreshing]); // Include isRefreshing as a dependency
+
+  useEffect(() => {
+    fetchVehicles();
+
+    // Add an event listener for when the page regains focus (user navigates back)
+    const handleFocus = () => {
+      fetchVehicles();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchVehicles]); // Include fetchVehicles in the dependency array
 
   const handleRefresh = () => {
     setIsRefreshing(true);

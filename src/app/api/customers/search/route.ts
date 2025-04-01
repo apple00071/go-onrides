@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
-import { dynamic, runtime } from '@/app/api/config';
+import { dynamic } from '@/app/api/config';
 
-export { dynamic, runtime };
+export const runtime = 'nodejs';
+export { dynamic, };
 
 async function handler(request: AuthenticatedRequest) {
   const searchParams = new URL(request.url).searchParams;

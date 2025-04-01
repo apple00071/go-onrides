@@ -3,12 +3,13 @@ import { supabase } from '@/lib/db';
 import { cookies } from 'next/headers';
 import * as jose from 'jose';
 import { AuthenticatedRequest } from '@/types';
-import { dynamic, runtime } from '@/app/api/config';
+import { dynamic } from '@/app/api/config';
 import { withRoleCheck } from '@/lib/auth';
 import { withAuth } from '@/lib/auth';
 
 // Explicitly export these to ensure the route is dynamic
-export { dynamic, runtime };
+export const runtime = 'nodejs';
+export { dynamic, };
 
 // Define interfaces for the database results
 interface RentalRecord {

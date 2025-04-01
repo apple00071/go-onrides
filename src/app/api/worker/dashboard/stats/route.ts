@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { withRoleCheck } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
-import { dynamic, runtime } from '../../../config';
+import { dynamic } from '../../../config';
 
 // Explicitly export these to ensure the route is dynamic
-export { dynamic, runtime };
+export const runtime = 'nodejs';
+export { dynamic };
 
 async function handler(request: AuthenticatedRequest) {
   try {

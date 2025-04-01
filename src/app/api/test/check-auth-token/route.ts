@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import { JwtPayload } from 'jsonwebtoken';
-import { dynamic, runtime } from '@/app/api/config';
+import { dynamic } from '@/app/api/config';
 
 // Explicitly export these to ensure the route is dynamic
-export { dynamic, runtime };
+export const runtime = 'nodejs';
+export { dynamic, };
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 

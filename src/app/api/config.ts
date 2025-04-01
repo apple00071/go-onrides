@@ -2,8 +2,8 @@
 
 // IMPORTANT: These settings must be exported from every API route that uses cookies
 // by adding: export { dynamic, runtime } from '@/app/api/config';
-export const dynamic = 'force-dynamic' as const;
-export const runtime = 'nodejs' as const;
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 // Revalidation settings
 export const revalidate = 0; // Disable cache

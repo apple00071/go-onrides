@@ -3,9 +3,10 @@ import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 import type { AuthenticatedRequest } from '@/types';
-import { dynamic, runtime } from '@/app/api/config';
+import { dynamic } from '@/app/api/config';
 
-export { dynamic, runtime };
+export const runtime = 'nodejs';
+export { dynamic, };
 
 // GET all users
 async function getUsers(request: AuthenticatedRequest) {
