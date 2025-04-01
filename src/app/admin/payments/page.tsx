@@ -7,13 +7,13 @@ import ErrorAlert from '@/components/ui/ErrorAlert';
 
 interface Payment {
   id: string;
-  rental_id: string;
+  booking_id: string;
   amount: number;
   method: string;
   status: string;
   created_at: string;
   customer_name?: string;
-  rental_reference?: string;
+  booking_reference?: string;
 }
 
 export default function PaymentsPage() {
@@ -220,7 +220,7 @@ export default function PaymentsPage() {
                       {payment.customer_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {payment.rental_id} ({payment.rental_reference})
+                      {payment.booking_id} ({payment.booking_reference})
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {formatCurrency(payment.amount)}

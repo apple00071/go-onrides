@@ -10,51 +10,51 @@ async function handler(
 ) {
   try {
     const id = params.id;
-    console.log('Processing cancellation for rental ID:', id);
+    console.log('Processing cancellation for booking ID:', id);
 
     if (!id) {
-      console.log('No rental ID provided');
+      console.log('No booking ID provided');
       return NextResponse.json(
-        { success: false, error: 'Rental ID is required' },
+        { success: false, error: 'Booking ID is required' },
         { status: 400 }
       );
     }
 
-    // First, get the rental to check its current status and get the vehicle ID
-    const { data: rental, error: rentalError } = await supabase
-      .from('rentals')
+    // First, get the booking to check its current status and get the vehicle ID
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
       .select('status, vehicle_id')
       .eq('id', id)
       .single();
 
-    if (rentalError || !rental) {
-      console.error('Error finding rental:', rentalError);
+    if (bookingError || !booking) {
+      console.error('Error finding booking:', bookingError);
       return NextResponse.json(
-        { success: false, error: 'Rental not found' },
+        { success: false, error: 'Booking not found' },
         { status: 404 }
       );
     }
 
-    if (rental.status !== 'active' && rental.status !== 'pending') {
+    if (booking.status !== 'active' && booking.status !== 'pending') {
       return NextResponse.json(
-        { success: false, error: `Cannot cancel a rental that is ${rental.status}` },
+        { success: false, error: `Cannot cancel a booking that is ${booking.status}` },
         { status: 400 }
       );
     }
 
-    // Update rental status
-    const { error: updateRentalError } = await supabase
-      .from('rentals')
+    // Update booking status
+    const { error: updateBookingError } = await supabase
+      .from('bookings')
       .update({
         status: 'cancelled',
         updated_at: new Date().toISOString()
       })
       .eq('id', id);
 
-    if (updateRentalError) {
-      console.error('Error updating rental:', updateRentalError);
+    if (updateBookingError) {
+      console.error('Error updating booking:', updateBookingError);
       return NextResponse.json(
-        { success: false, error: 'Failed to update rental status' },
+        { success: false, error: 'Failed to update booking status' },
         { status: 500 }
       );
     }
@@ -63,7 +63,7 @@ async function handler(
     const { error: updateVehicleError } = await supabase
       .from('vehicles')
       .update({ status: 'available' })
-      .eq('id', rental.vehicle_id);
+      .eq('id', booking.vehicle_id);
 
     if (updateVehicleError) {
       console.error('Error updating vehicle status:', updateVehicleError);
@@ -72,14 +72,14 @@ async function handler(
 
     return NextResponse.json({
       success: true,
-      message: 'Rental cancelled successfully'
+      message: 'Booking cancelled successfully'
     });
   } catch (error) {
-    console.error('Error cancelling rental:', error);
+    console.error('Error cancelling booking:', error);
     return NextResponse.json(
       { 
         success: false, 
-        error: 'Failed to cancel rental',
+        error: 'Failed to cancel booking',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }

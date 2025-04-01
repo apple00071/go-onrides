@@ -2,13 +2,15 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
-import { dynamic, revalidate } from '@/app/api/config';
+import { dynamic, runtime } from '@/app/api/config';
 
-// Get a single rental with detailed information
-async function getRental(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
+export { dynamic, runtime };
+
+// Get a single booking with detailed information
+async function getBooking(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {
-    const { data: rental, error } = await supabase
-      .from('rentals')
+    const { data: booking, error } = await supabase
+      .from('bookings')
       .select(`
         *,
         customer:customers(
@@ -38,28 +40,28 @@ async function getRental(request: AuthenticatedRequest, { params }: { params: { 
       .single();
 
     if (error) {
-      console.error('Error fetching rental:', error);
+      console.error('Error fetching booking:', error);
       return NextResponse.json(
-        { error: 'Rental not found' },
+        { error: 'Booking not found' },
         { status: 404 }
       );
     }
 
-    // Get payments for this rental
+    // Get payments for this booking
     const { data: payments } = await supabase
       .from('payments')
       .select('*')
-      .eq('rental_id', rental.id)
+      .eq('booking_id', booking.id)
       .order('created_at', { ascending: false });
 
     return NextResponse.json({
-      rental: {
-        ...rental,
+      booking: {
+        ...booking,
         payments: payments || []
       }
     });
   } catch (error) {
-    console.error('Error in get rental:', error);
+    console.error('Error in get booking:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -67,8 +69,8 @@ async function getRental(request: AuthenticatedRequest, { params }: { params: { 
   }
 }
 
-// Update a rental - Admin only
-async function updateRental(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
+// Update a booking - Admin only
+async function updateBooking(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {
     const body = await request.json();
     const { start_date, end_date, status, notes } = body;
@@ -81,9 +83,9 @@ async function updateRental(request: AuthenticatedRequest, { params }: { params:
       );
     }
 
-    // Update rental
-    const { data: rental, error } = await supabase
-      .from('rentals')
+    // Update booking
+    const { data: booking, error } = await supabase
+      .from('bookings')
       .update({
         start_date,
         end_date,
@@ -96,16 +98,16 @@ async function updateRental(request: AuthenticatedRequest, { params }: { params:
       .single();
 
     if (error) {
-      console.error('Error updating rental:', error);
+      console.error('Error updating booking:', error);
       return NextResponse.json(
-        { error: 'Failed to update rental' },
+        { error: 'Failed to update booking' },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ rental });
+    return NextResponse.json({ booking });
   } catch (error) {
-    console.error('Error in update rental:', error);
+    console.error('Error in update booking:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -113,41 +115,41 @@ async function updateRental(request: AuthenticatedRequest, { params }: { params:
   }
 }
 
-// Delete a rental - Admin only
-async function deleteRental(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
+// Delete a booking - Admin only
+async function deleteBooking(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {
-    // Check if rental has any payments
+    // Check if booking has any payments
     const { data: payments } = await supabase
       .from('payments')
       .select('id')
-      .eq('rental_id', params.id);
+      .eq('booking_id', params.id);
 
     if (payments && payments.length > 0) {
       return NextResponse.json(
-        { error: 'Cannot delete rental with associated payments' },
+        { error: 'Cannot delete booking with associated payments' },
         { status: 400 }
       );
     }
 
     const { error } = await supabase
-      .from('rentals')
+      .from('bookings')
       .delete()
       .eq('id', params.id);
 
     if (error) {
-      console.error('Error deleting rental:', error);
+      console.error('Error deleting booking:', error);
       return NextResponse.json(
-        { error: 'Failed to delete rental' },
+        { error: 'Failed to delete booking' },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Rental deleted successfully'
+      message: 'Booking deleted successfully'
     });
   } catch (error) {
-    console.error('Error in delete rental:', error);
+    console.error('Error in delete booking:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -155,6 +157,7 @@ async function deleteRental(request: AuthenticatedRequest, { params }: { params:
   }
 }
 
-export const GET = withAuth(getRental);
-export const PATCH = withAuth(updateRental);
-export const DELETE = withAuth(deleteRental); 
+// Handle methods
+export const GET = withAuth(getBooking);
+export const PUT = withAuth(updateBooking);
+export const DELETE = withAuth(deleteBooking); 

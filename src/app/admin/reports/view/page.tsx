@@ -42,13 +42,13 @@ interface ReportData {
     revenue: number;
     count: number;
   }[];
-  rentalDuration: {
+  bookingDuration: {
     duration: string;
     count: number;
   }[];
-    totalCustomers: number;
-    newCustomers: number;
-    returningCustomers: number;
+  totalCustomers: number;
+  newCustomers: number;
+  returningCustomers: number;
   customerSegments: {
     segment: string;
     count: number;
@@ -57,11 +57,10 @@ interface ReportData {
 
 export default function ReportViewPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const reportId = searchParams.get('id');
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const reportId = useSearchParams().get('id');
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -72,15 +71,41 @@ export default function ReportViewPage() {
       }
 
       try {
-        const response = await fetch(`/api/reports/${reportId}`, {
+        // Get date range (last 30 days by default)
+        const endDate = new Date().toISOString().split('T')[0];
+        const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        const response = await fetch(`/api/reports?start_date=${startDate}&end_date=${endDate}`, {
           credentials: 'include'
         });
+
         if (!response.ok) {
           throw new Error('Failed to fetch report');
         }
-        const data = await response.json();
-        setReport(data.data);
+
+        const { data } = await response.json();
+
+        // Transform API data to match the expected report structure
+        const transformedData: ReportData = {
+          id: reportId,
+          title: 'Monthly Performance Report',
+          description: 'Overview of bookings, revenue, and customer activity',
+          dateRange: {
+            start: startDate,
+            end: endDate
+          },
+          totalRevenue: data.totalRevenue,
+          byVehicleType: data.byVehicleType || [],
+          bookingDuration: data.bookingDuration || [],
+          totalCustomers: data.totalCustomers,
+          newCustomers: data.newCustomers,
+          returningCustomers: data.returningCustomers,
+          customerSegments: data.customerSegments || []
+        };
+
+        setReport(transformedData);
       } catch (err) {
+        console.error('Error fetching report:', err);
         setError(err instanceof Error ? err.message : 'Failed to load report');
       } finally {
         setLoading(false);
@@ -118,11 +143,11 @@ export default function ReportViewPage() {
   };
 
   const rentalDurationData = {
-    labels: report.rentalDuration.map(item => item.duration),
+    labels: report.bookingDuration.map(item => item.duration),
     datasets: [
       {
-        label: 'Rental Duration Distribution',
-        data: report.rentalDuration.map(item => item.count),
+        label: 'Booking Duration Distribution',
+        data: report.bookingDuration.map(item => item.count),
         backgroundColor: 'rgba(54, 162, 235, 0.5)',
         borderColor: 'rgba(54, 162, 235, 1)',
         borderWidth: 1,
@@ -149,8 +174,8 @@ export default function ReportViewPage() {
       },
     ],
   };
-
-  return (
+    
+    return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -197,17 +222,17 @@ export default function ReportViewPage() {
             <div>
                   <dt className="text-sm font-medium text-gray-500">New Customers</dt>
                   <dd className="text-xl font-semibold">{report.newCustomers}</dd>
-                </div>
+          </div>
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Returning Customers</dt>
                   <dd className="text-xl font-semibold">{report.returningCustomers}</dd>
-                </div>
+        </div>
               </div>
             </dl>
           </CardContent>
         </Card>
             </div>
-
+            
       <div className="mt-6 grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -220,7 +245,7 @@ export default function ReportViewPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Rental Duration Distribution</CardTitle>
+            <CardTitle>Booking Duration Distribution</CardTitle>
           </CardHeader>
           <CardContent>
             <Bar data={rentalDurationData} />

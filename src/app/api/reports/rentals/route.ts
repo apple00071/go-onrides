@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/auth';
+import type { AuthenticatedRequest } from '@/types';
 
+// Set runtime and dynamic options explicitly as string literals
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 interface Vehicle {
-  name: string;
+  model: string;
   type: string;
 }
 
@@ -15,37 +18,39 @@ interface Customer {
   email: string;
 }
 
-interface RentalRow {
+interface BookingRow {
   id: string;
+  booking_id: string;
   vehicle_id: string;
   customer_id: string;
   start_date: string;
   end_date: string;
   status: string;
   total_amount: number;
-  vehicles: Vehicle | null;
-  customers: Customer | null;
+  vehicle: Vehicle | null;
+  customer: Customer | null;
 }
 
-async function handler() {
+async function handler(request: AuthenticatedRequest) {
   const supabase = createClient();
 
   try {
-    const { data, error: rentalsError } = await supabase
-      .from('rentals')
+    const { data, error: bookingsError } = await supabase
+      .from('bookings')
       .select(`
         id,
+        booking_id,
         vehicle_id,
         customer_id,
         start_date,
         end_date,
         status,
         total_amount,
-        vehicles (
-          name,
+        vehicle:vehicles (
+          model,
           type
         ),
-        customers (
+        customer:customers (
           first_name,
           last_name,
           email
@@ -54,69 +59,70 @@ async function handler() {
       .order('created_at', { ascending: false })
       .limit(100);
 
-    if (rentalsError) {
-      throw rentalsError;
+    if (bookingsError) {
+      throw bookingsError;
     }
 
     // Safe type assertion with validation
-    const rentals = ((data || []) as unknown[]).map(row => {
-      const rental = row as Record<string, any>;
+    const bookings = ((data || []) as unknown[]).map(row => {
+      const booking = row as Record<string, any>;
       return {
-        id: rental.id,
-        vehicle_id: rental.vehicle_id,
-        customer_id: rental.customer_id,
-        start_date: rental.start_date,
-        end_date: rental.end_date,
-        status: rental.status,
-        total_amount: rental.total_amount || 0,
-        vehicles: rental.vehicles ? {
-          name: rental.vehicles.name,
-          type: rental.vehicles.type,
+        id: booking.id,
+        booking_id: booking.booking_id,
+        vehicle_id: booking.vehicle_id,
+        customer_id: booking.customer_id,
+        start_date: booking.start_date,
+        end_date: booking.end_date,
+        status: booking.status,
+        total_amount: booking.total_amount || 0,
+        vehicle: booking.vehicle ? {
+          model: booking.vehicle.model,
+          type: booking.vehicle.type,
         } : null,
-        customers: rental.customers ? {
-          first_name: rental.customers.first_name,
-          last_name: rental.customers.last_name,
-          email: rental.customers.email,
+        customer: booking.customer ? {
+          first_name: booking.customer.first_name,
+          last_name: booking.customer.last_name,
+          email: booking.customer.email,
         } : null,
-      } as RentalRow;
+      } as BookingRow;
     });
 
     // Calculate statistics
-    const totalRentals = rentals.length;
-    const activeRentals = rentals.filter(r => r.status === 'active').length;
-    const completedRentals = rentals.filter(r => r.status === 'completed').length;
-    const totalRevenue = rentals.reduce((sum, r) => sum + (r.total_amount || 0), 0);
+    const totalBookings = bookings.length;
+    const activeBookings = bookings.filter(b => b.status === 'active').length;
+    const completedBookings = bookings.filter(b => b.status === 'completed').length;
+    const totalRevenue = bookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
 
-    // Group rentals by vehicle type
-    const byVehicleType = rentals.reduce((acc: Record<string, { count: number; revenue: number }>, rental) => {
-      const type = rental.vehicles?.type || 'Unknown';
+    // Group bookings by vehicle type
+    const byVehicleType = bookings.reduce((acc: Record<string, { count: number; revenue: number }>, booking) => {
+      const type = booking.vehicle?.type || 'Unknown';
       if (!acc[type]) {
         acc[type] = { count: 0, revenue: 0 };
       }
       acc[type].count++;
-      acc[type].revenue += rental.total_amount || 0;
+      acc[type].revenue += booking.total_amount || 0;
       return acc;
     }, {});
 
-    // Calculate rental durations
-    const rentalDurations = rentals.map(rental => {
-      const start = new Date(rental.start_date);
-      const end = new Date(rental.end_date);
+    // Calculate booking durations
+    const bookingDurations = bookings.map(booking => {
+      const start = new Date(booking.start_date);
+      const end = new Date(booking.end_date);
       return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
     });
 
     const durationRanges = {
-      '1-3 days': rentalDurations.filter(d => d >= 1 && d <= 3).length,
-      '4-7 days': rentalDurations.filter(d => d >= 4 && d <= 7).length,
-      '8-14 days': rentalDurations.filter(d => d >= 8 && d <= 14).length,
-      '15+ days': rentalDurations.filter(d => d >= 15).length,
+      '1-3 days': bookingDurations.filter(d => d >= 1 && d <= 3).length,
+      '4-7 days': bookingDurations.filter(d => d >= 4 && d <= 7).length,
+      '8-14 days': bookingDurations.filter(d => d >= 8 && d <= 14).length,
+      '15+ days': bookingDurations.filter(d => d >= 15).length,
     };
 
     return NextResponse.json({
       data: {
-        totalRentals,
-        activeRentals,
-        completedRentals,
+        totalBookings,
+        activeBookings,
+        completedBookings,
         totalRevenue,
         byVehicleType: Object.entries(byVehicleType).map(([type, stats]) => ({
           type,
@@ -127,26 +133,27 @@ async function handler() {
           range,
           count,
         })),
-        recentRentals: rentals.map(rental => ({
-          id: rental.id,
-          vehicleName: rental.vehicles?.name,
-          customerName: rental.customers
-            ? `${rental.customers.first_name} ${rental.customers.last_name}`
+        recentBookings: bookings.map(booking => ({
+          id: booking.id,
+          booking_id: booking.booking_id,
+          vehicleName: booking.vehicle?.model,
+          customerName: booking.customer
+            ? `${booking.customer.first_name} ${booking.customer.last_name}`
             : 'Unknown',
-          startDate: rental.start_date,
-          endDate: rental.end_date,
-          status: rental.status,
-          amount: rental.total_amount,
+          startDate: booking.start_date,
+          endDate: booking.end_date,
+          status: booking.status,
+          amount: booking.total_amount,
         })),
       },
     });
   } catch (error) {
-    console.error('Error fetching rental report:', error);
+    console.error('Error fetching booking report:', error);
     return NextResponse.json(
-      { error: 'Failed to generate rental report' },
+      { error: 'Failed to generate booking report' },
       { status: 500 }
     );
   }
 }
 
-export const GET = withAuth(handler); 
+export { handler as GET }; 

@@ -1,6 +1,6 @@
 // Configuration for all API routes
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic' as const;
+export const runtime = 'nodejs' as const;
 
 // Revalidation settings
 export const revalidate = 0; // Disable cache
@@ -10,7 +10,7 @@ export const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Allow-Credentials': 'true',
-};
+} as const;
 
 // Helper function to handle CORS preflight requests
 export async function handleCORS(request: Request) {

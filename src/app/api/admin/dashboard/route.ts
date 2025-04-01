@@ -3,8 +3,9 @@ import { supabase } from '@/lib/db';
 import { cookies } from 'next/headers';
 import * as jose from 'jose';
 import { AuthenticatedRequest } from '@/types';
-import { dynamic, revalidate } from '../../config';
+import { dynamic, runtime } from '@/app/api/config';
 import { withRoleCheck } from '@/lib/auth';
+import { withAuth } from '@/lib/auth';
 
 // Define interfaces for the database results
 interface RentalRecord {
@@ -168,10 +169,10 @@ async function handler(request: AuthenticatedRequest) {
   }
 }
 
-// Role check middleware to protect the route
+// Export the handler with role check
 export const GET = withRoleCheck(handler, ['admin']);
 
-// Default empty response 
+// Default empty response
 const emptyResponse: DashboardData = {
   stats: {
     totalCustomers: 0,
@@ -189,3 +190,5 @@ const emptyResponse: DashboardData = {
   },
   recentActivity: []
 }; 
+
+export { dynamic, runtime }; 

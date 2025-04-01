@@ -23,7 +23,8 @@ export interface User {
   id: number;
   email: string;
   username: string;
-  full_name: string;
+  name?: string;
+  full_name?: string;
   role: 'admin' | 'worker';
   status: 'active' | 'inactive';
   phone?: string;

@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
-import { dynamic, revalidate } from '../config';
+import { dynamic, runtime } from '@/app/api/config';
+
+export { dynamic, runtime };
 
 async function getPayments(request: AuthenticatedRequest) {
   try {
@@ -11,13 +13,10 @@ async function getPayments(request: AuthenticatedRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const offset = (page - 1) * limit;
 
-    // Get payments with rental and customer details
+    // Get payments data
     const { data: payments, error, count } = await supabase
       .from('payments')
-      .select(`
-        *,
-        rental:rentals(rental_id, customer:customers(first_name, last_name))
-      `, { count: 'exact' })
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -29,20 +28,67 @@ async function getPayments(request: AuthenticatedRequest) {
       );
     }
 
+    // Get corresponding bookings and customers
+    const bookingIds = payments?.map(p => p.booking_id).filter(Boolean) || [];
+    
+    // Get bookings data if we have booking IDs
+    let bookingsData: Record<string | number, any> = {};
+    let customersData: Record<string | number, any> = {};
+    
+    if (bookingIds.length > 0) {
+      const { data: bookings } = await supabase
+        .from('bookings')
+        .select('id, booking_id, customer_id')
+        .in('id', bookingIds);
+        
+      if (bookings?.length) {
+        // Create a lookup map for bookings
+        bookingsData = bookings.reduce((acc: Record<string | number, any>, booking) => {
+          acc[booking.id] = booking;
+          return acc;
+        }, {});
+        
+        // Get customer data 
+        const customerIds = bookings.map(b => b.customer_id).filter(Boolean);
+        
+        if (customerIds.length > 0) {
+          const { data: customers } = await supabase
+            .from('customers')
+            .select('id, first_name, last_name')
+            .in('id', customerIds);
+            
+          if (customers?.length) {
+            // Create a lookup map for customers
+            customersData = customers.reduce((acc: Record<string | number, any>, customer) => {
+              acc[customer.id] = customer;
+              return acc;
+            }, {});
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
-        payments: payments?.map(payment => ({
-          id: payment.id,
-          rental_id: payment.rental?.rental_id,
-          customer_name: `${payment.rental?.customer?.first_name} ${payment.rental?.customer?.last_name}`,
-          amount: payment.amount,
-          method: payment.method,
-          status: payment.status,
-          transaction_id: payment.transaction_id,
-          notes: payment.notes,
-          created_at: payment.created_at
-        })) || [],
+        payments: payments?.map(payment => {
+          const booking = bookingsData[payment.booking_id];
+          const customer = booking ? customersData[booking.customer_id] : null;
+          
+          return {
+            id: payment.id,
+            booking_id: payment.booking_id,
+            booking_reference: booking?.booking_id,
+            customer_name: customer ? 
+              `${customer.first_name} ${customer.last_name}` : 'N/A',
+            amount: payment.amount,
+            method: payment.method,
+            status: payment.status,
+            transaction_id: payment.transaction_id,
+            notes: payment.notes,
+            created_at: payment.created_at
+          };
+        }) || [],
         pagination: {
           total: count || 0,
           page,
@@ -64,14 +110,14 @@ async function createPayment(request: AuthenticatedRequest) {
   try {
     const body = await request.json();
     const {
-      rental_id,
+      booking_id,
       amount,
       method,
       transaction_id,
       notes
     } = body;
 
-    if (!rental_id || !amount || !method) {
+    if (!booking_id || !amount || !method) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -82,7 +128,7 @@ async function createPayment(request: AuthenticatedRequest) {
     const { data: payment, error } = await supabase
       .from('payments')
       .insert({
-        rental_id,
+        booking_id,
         amount,
         method,
         status: 'completed',
@@ -101,25 +147,25 @@ async function createPayment(request: AuthenticatedRequest) {
       );
     }
 
-    // Update rental payment status
-    const { data: rental } = await supabase
-      .from('rentals')
+    // Update booking payment status
+    const { data: booking } = await supabase
+      .from('bookings')
       .select('total_amount, paid_amount')
-      .eq('id', rental_id)
+      .eq('id', booking_id)
       .single();
 
-    if (rental) {
-      const newPaidAmount = (rental.paid_amount || 0) + amount;
-      const paymentStatus = newPaidAmount >= rental.total_amount ? 'paid' : 'partial';
+    if (booking) {
+      const newPaidAmount = (booking.paid_amount || 0) + amount;
+      const paymentStatus = newPaidAmount >= booking.total_amount ? 'paid' : 'partial';
 
       await supabase
-        .from('rentals')
+        .from('bookings')
         .update({
           paid_amount: newPaidAmount,
           payment_status: paymentStatus,
           updated_at: new Date().toISOString()
         })
-        .eq('id', rental_id);
+        .eq('id', booking_id);
     }
 
     return NextResponse.json({
@@ -135,5 +181,4 @@ async function createPayment(request: AuthenticatedRequest) {
   }
 }
 
-export const GET = withAuth(getPayments);
-export const POST = withAuth(createPayment); 
+export { getPayments as GET, createPayment as POST }; 

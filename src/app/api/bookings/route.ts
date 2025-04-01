@@ -4,6 +4,8 @@ import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
 import { dynamic, runtime } from '@/app/api/config';
 
+export { dynamic, runtime };
+
 async function getBookings(request: AuthenticatedRequest) {
   try {
     console.log('Fetching bookings...');
@@ -236,5 +238,4 @@ async function createBooking(request: AuthenticatedRequest) {
   }
 }
 
-export const GET = withAuth(getBookings);
-export const POST = withAuth(createBooking); 
+export { getBookings as GET, createBooking as POST }; 

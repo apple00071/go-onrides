@@ -13,6 +13,7 @@ interface User {
   status: 'active' | 'inactive';
   created_at: string;
   last_login?: string;
+  full_name?: string;
 }
 
 export default function UsersPage() {
@@ -70,10 +71,14 @@ export default function UsersPage() {
   };
 
   const filteredUsers = users.filter(user => {
+    const userName = user?.name || user?.full_name || '';
+    const userEmail = user?.email || '';
+    const userStatus = user?.status || 'inactive';
+
     const matchesSearch = 
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = showInactive ? true : user.status === 'active';
+      userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      userEmail.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = showInactive ? true : userStatus === 'active';
     return matchesSearch && matchesStatus;
   });
 

@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
-import { dynamic, revalidate, runtime } from '@/app/api/config';
+import { dynamic, runtime } from '@/app/api/config';
+
+export { dynamic, runtime };
 
 // Get a specific payment by ID
 async function getPayment(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
@@ -11,7 +13,7 @@ async function getPayment(request: AuthenticatedRequest, { params }: { params: {
       .from('payments')
       .select(`
         *,
-        rental:rentals(rental_id, customer_id, vehicle_id),
+        booking:bookings(booking_id, customer_id, vehicle_id),
         customer:customers(first_name, last_name),
         received_by:users(full_name)
       `)
@@ -107,6 +109,7 @@ async function deletePayment(request: AuthenticatedRequest, { params }: { params
   }
 }
 
+// Handle methods
 export const GET = withAuth(getPayment);
-export const PATCH = withAuth(updatePayment);
+export const PUT = withAuth(updatePayment);
 export const DELETE = withAuth(deletePayment); 

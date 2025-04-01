@@ -4,7 +4,7 @@ import { withAuth } from '@/lib/auth';
 import type { AuthenticatedRequest } from '@/types';
 import { dynamic, revalidate } from '../config';
 
-async function getRentals(request: AuthenticatedRequest) {
+async function getBookings(request: AuthenticatedRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -14,7 +14,7 @@ async function getRentals(request: AuthenticatedRequest) {
     const search = searchParams.get('search');
 
     let query = supabase
-      .from('rentals')
+      .from('bookings')
       .select(`
         *,
         customer:customers(first_name, last_name, phone),
@@ -35,17 +35,17 @@ async function getRentals(request: AuthenticatedRequest) {
         customer.phone.ilike.%${search}%,
         vehicle.model.ilike.%${search}%,
         vehicle.number_plate.ilike.%${search}%,
-        rental_id.ilike.%${search}%
+        booking_id.ilike.%${search}%
       `);
     }
 
     // Apply pagination
-    const { data: rentals, error, count } = await query.range(offset, offset + limit - 1);
+    const { data: bookings, error, count } = await query.range(offset, offset + limit - 1);
 
     if (error) {
-      console.error('Error fetching rentals:', error);
+      console.error('Error fetching bookings:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch rentals' },
+        { error: 'Failed to fetch bookings' },
         { status: 500 }
       );
     }
@@ -53,19 +53,19 @@ async function getRentals(request: AuthenticatedRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        rentals: rentals?.map(rental => ({
-          id: rental.id,
-          rental_id: rental.rental_id,
-          customer_name: `${rental.customer.first_name} ${rental.customer.last_name}`,
-          customer_phone: rental.customer.phone,
-          vehicle: `${rental.vehicle.model} (${rental.vehicle.number_plate})`,
-          worker_name: rental.worker.full_name,
-          start_date: rental.start_date,
-          end_date: rental.end_date,
-          status: rental.status,
-          total_amount: rental.total_amount,
-          payment_status: rental.payment_status,
-          created_at: rental.created_at
+        bookings: bookings?.map(booking => ({
+          id: booking.id,
+          booking_id: booking.booking_id,
+          customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
+          customer_phone: booking.customer.phone,
+          vehicle: `${booking.vehicle.model} (${booking.vehicle.number_plate})`,
+          worker_name: booking.worker.full_name,
+          start_date: booking.start_date,
+          end_date: booking.end_date,
+          status: booking.status,
+          total_amount: booking.total_amount,
+          payment_status: booking.payment_status,
+          created_at: booking.created_at
         })) || [],
         pagination: {
           total: count || 0,
@@ -76,7 +76,7 @@ async function getRentals(request: AuthenticatedRequest) {
       }
     });
   } catch (error) {
-    console.error('Error in rentals endpoint:', error);
+    console.error('Error in bookings endpoint:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -84,7 +84,7 @@ async function getRentals(request: AuthenticatedRequest) {
   }
 }
 
-async function createRental(request: AuthenticatedRequest) {
+async function createBooking(request: AuthenticatedRequest) {
   try {
     const body = await request.json();
     const {
@@ -106,14 +106,14 @@ async function createRental(request: AuthenticatedRequest) {
       );
     }
 
-    // Generate rental ID
-    const rentalId = `RNT${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    // Generate booking ID
+    const bookingId = `BKG${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
-    // Create rental record
-    const { data: rental, error } = await supabase
-      .from('rentals')
+    // Create booking record
+    const { data: booking, error } = await supabase
+      .from('bookings')
       .insert({
-        rental_id: rentalId,
+        booking_id: bookingId,
         customer_id,
         vehicle_id,
         worker_id: request.user?.id,
@@ -131,9 +131,9 @@ async function createRental(request: AuthenticatedRequest) {
       .single();
 
     if (error) {
-      console.error('Error creating rental:', error);
+      console.error('Error creating booking:', error);
       return NextResponse.json(
-        { error: 'Failed to create rental' },
+        { error: 'Failed to create booking' },
         { status: 500 }
       );
     }
@@ -149,10 +149,10 @@ async function createRental(request: AuthenticatedRequest) {
 
     return NextResponse.json({
       success: true,
-      data: rental
+      data: booking
     });
   } catch (error) {
-    console.error('Error in create rental endpoint:', error);
+    console.error('Error in create booking endpoint:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -160,5 +160,5 @@ async function createRental(request: AuthenticatedRequest) {
   }
 }
 
-export const GET = withAuth(getRentals);
-export const POST = withAuth(createRental); 
+export const GET = withAuth(getBookings);
+export const POST = withAuth(createBooking); 
