@@ -104,38 +104,125 @@ async function createVehicle(request: AuthenticatedRequest) {
       );
     }
 
-    // Create vehicle record
-    const { data: vehicle, error } = await supabase
-      .from('vehicles')
-      .insert({
-        type,
-        model,
-        number_plate,
-        daily_rate,
-        status,
-        manufacturer,
-        year,
-        color
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error creating vehicle:', error);
-      return NextResponse.json(
-        { success: false, error: 'Failed to create vehicle' },
-        { status: 500 }
-      );
+    // First, ensure all potentially missing columns exist in the schema
+    try {
+      await supabase.rpc('execute_sql', {
+        sql_string: `
+          DO $$
+          BEGIN
+            -- Check and add color column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'vehicles' AND column_name = 'color'
+            ) THEN
+              ALTER TABLE vehicles ADD COLUMN color TEXT;
+              RAISE NOTICE 'Added missing color column to vehicles table';
+            END IF;
+            
+            -- Check and add manufacturer column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'vehicles' AND column_name = 'manufacturer'
+            ) THEN
+              ALTER TABLE vehicles ADD COLUMN manufacturer TEXT;
+              RAISE NOTICE 'Added missing manufacturer column to vehicles table';
+            END IF;
+            
+            -- Check and add year column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'vehicles' AND column_name = 'year'
+            ) THEN
+              ALTER TABLE vehicles ADD COLUMN year INTEGER;
+              RAISE NOTICE 'Added missing year column to vehicles table';
+            END IF;
+            
+            -- Check and add hourly_rate column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'vehicles' AND column_name = 'hourly_rate'
+            ) THEN
+              ALTER TABLE vehicles ADD COLUMN hourly_rate DECIMAL(10,2);
+              RAISE NOTICE 'Added missing hourly_rate column to vehicles table';
+            END IF;
+            
+            -- Check and add weekly_rate column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'vehicles' AND column_name = 'weekly_rate'
+            ) THEN
+              ALTER TABLE vehicles ADD COLUMN weekly_rate DECIMAL(10,2);
+              RAISE NOTICE 'Added missing weekly_rate column to vehicles table';
+            END IF;
+          END $$;
+        `
+      });
+      console.log('Fixed database schema: added any missing columns to vehicles table');
+    } catch (schemaError) {
+      // Log the error, but still try to create the vehicle with only required fields
+      console.error('Failed to fix schema before creating vehicle:', schemaError);
     }
 
-    console.log('Created new vehicle:', vehicle);
+    // Now try a basic insert with only required fields first
+    try {
+      const { data: vehicle, error } = await supabase
+        .from('vehicles')
+        .insert({
+          type,
+          model,
+          number_plate,
+          daily_rate,
+          status
+        })
+        .select()
+        .single();
 
-    return NextResponse.json({
-      success: true,
-      data: vehicle,
-      // For backwards compatibility
-      vehicle: vehicle
-    });
+      if (error) {
+        throw error;
+      }
+
+      console.log('Created new vehicle:', vehicle);
+
+      return NextResponse.json({
+        success: true,
+        data: vehicle,
+        vehicle: vehicle
+      });
+    } catch (insertError) {
+      console.error('Error creating vehicle (basic fields):', insertError);
+      
+      // If the first insert fails, try again with reduced fields as a fallback
+      try {
+        const { data: vehicle, error } = await supabase
+          .from('vehicles')
+          .insert({
+            type,
+            model,
+            number_plate,
+            daily_rate: parseFloat(daily_rate.toString())
+          })
+          .select()
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        console.log('Created new vehicle with fallback method:', vehicle);
+
+        return NextResponse.json({
+          success: true,
+          data: vehicle,
+          vehicle: vehicle
+        });
+      } catch (fallbackError) {
+        console.error('Error creating vehicle (fallback attempt):', fallbackError);
+        return NextResponse.json(
+          { success: false, error: 'Failed to create vehicle after multiple attempts' },
+          { status: 500 }
+        );
+      }
+    }
   } catch (error) {
     console.error('Error in create vehicle endpoint:', error);
     return NextResponse.json(

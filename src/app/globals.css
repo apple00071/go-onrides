@@ -11,3 +11,146 @@ body {
   color: rgb(var(--foreground-rgb));
   background: rgb(var(--background-rgb));
 }
+
+/* Update custom datepicker styles to make them more modern */
+.react-datepicker {
+  font-family: inherit;
+  font-size: 0.8rem;
+  border: none !important;
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.react-datepicker__header {
+  background-color: #fff;
+  border-bottom: 1px solid #f3f4f6;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.react-datepicker__current-month {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1f2937;
+  padding-bottom: 0.25rem;
+}
+
+.react-datepicker__navigation {
+  top: 0.5rem;
+}
+
+.react-datepicker__day-name {
+  width: 1.7rem;
+  margin: 0.15rem;
+  color: #6b7280;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.react-datepicker__month {
+  margin: 0;
+  padding: 0 0.25rem 0.25rem;
+}
+
+.react-datepicker__day {
+  width: 1.7rem;
+  height: 1.7rem;
+  line-height: 1.7rem;
+  margin: 0.15rem;
+  border-radius: 9999px;
+  color: #4b5563;
+  font-size: 0.75rem;
+}
+
+.react-datepicker__day:hover {
+  background-color: #f97316;
+  color: white;
+  border-radius: 9999px;
+}
+
+.react-datepicker__day--disabled {
+  color: #d1d5db;
+}
+
+.react-datepicker__day--selected {
+  background-color: #f97316;
+  color: white;
+  font-weight: 500;
+}
+
+.react-datepicker__day--keyboard-selected {
+  background-color: #fdba74;
+  color: white;
+}
+
+.react-datepicker__triangle {
+  display: none;
+}
+
+/* Time Dropdown Styles */
+.time-dropdown {
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  max-height: 200px;
+}
+
+.time-dropdown button {
+  padding: 0.375rem 0.75rem;
+  text-align: left;
+  font-size: 0.75rem;
+  transition: background-color 0.15s ease-in-out;
+}
+
+@keyframes timepicker-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.time-dropdown {
+  animation: timepicker-fade-in 0.15s ease-out;
+}
+
+/* Thin Scrollbar Styles */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Signature Canvas Styles */
+.signature-canvas {
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* Add a dashed hint line to guide users where to sign */
+.signature-canvas::before {
+  content: "";
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  bottom: 30%;
+  border-bottom: 1px dashed #d1d5db;
+  pointer-events: none;
+}

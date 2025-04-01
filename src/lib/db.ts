@@ -20,6 +20,84 @@ if (!supabaseKey) {
 // Create Supabase client with error handling
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Fix the schema issue with the color column
+(async () => {
+  try {
+    await supabase.rpc('execute_sql', {
+      sql_string: `
+        DO $$
+        BEGIN
+          -- Check and add color column if missing
+          IF NOT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'vehicles' AND column_name = 'color'
+          ) THEN
+            ALTER TABLE vehicles ADD COLUMN color TEXT;
+            RAISE NOTICE 'Added missing color column to vehicles table';
+          END IF;
+          
+          -- Check and add manufacturer column if missing
+          IF NOT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'vehicles' AND column_name = 'manufacturer'
+          ) THEN
+            ALTER TABLE vehicles ADD COLUMN manufacturer TEXT;
+            RAISE NOTICE 'Added missing manufacturer column to vehicles table';
+          END IF;
+          
+          -- Check and add year column if missing
+          IF NOT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'vehicles' AND column_name = 'year'
+          ) THEN
+            ALTER TABLE vehicles ADD COLUMN year INTEGER;
+            RAISE NOTICE 'Added missing year column to vehicles table';
+          END IF;
+          
+          -- Check and add hourly_rate column if missing
+          IF NOT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'vehicles' AND column_name = 'hourly_rate'
+          ) THEN
+            ALTER TABLE vehicles ADD COLUMN hourly_rate DECIMAL(10,2);
+            RAISE NOTICE 'Added missing hourly_rate column to vehicles table';
+          END IF;
+          
+          -- Check and add weekly_rate column if missing
+          IF NOT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'vehicles' AND column_name = 'weekly_rate'
+          ) THEN
+            ALTER TABLE vehicles ADD COLUMN weekly_rate DECIMAL(10,2);
+            RAISE NOTICE 'Added missing weekly_rate column to vehicles table';
+          END IF;
+          
+          -- Check and add created_at column if missing
+          IF NOT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'vehicles' AND column_name = 'created_at'
+          ) THEN
+            ALTER TABLE vehicles ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW();
+            RAISE NOTICE 'Added missing created_at column to vehicles table';
+          END IF;
+          
+          -- Check and add updated_at column if missing
+          IF NOT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'vehicles' AND column_name = 'updated_at'
+          ) THEN
+            ALTER TABLE vehicles ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+            RAISE NOTICE 'Added missing updated_at column to vehicles table';
+          END IF;
+        END $$;
+      `
+    });
+    console.log('Database schema fix applied: All missing columns have been added to the vehicles table');
+  } catch (err) {
+    console.error('Failed to fix vehicles schema:', err);
+  }
+})();
+
 // Tables
 export const TABLES = {
   USERS: 'users',

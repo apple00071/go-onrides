@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
 import SignaturePad from 'react-signature-canvas';
 import { toast } from 'react-hot-toast';
+import DatePicker from 'react-datepicker';
+import "react-datepicker/dist/react-datepicker.css";
+import { format, setHours, setMinutes, addDays, parseISO, startOfDay } from 'date-fns';
 
 interface Vehicle {
   id: number;
@@ -13,6 +16,9 @@ interface Vehicle {
   type: string;
   number_plate: string;
   status: string;
+  make?: string;
+  manufacturer?: string;
+  registration: string;
 }
 
 interface Customer {
@@ -23,11 +29,11 @@ interface Customer {
   phone: string;
 }
 
-interface BookingFormProps {
-  role: 'admin' | 'worker';
-  onSubmit?: (data: any) => void;
-  onCancel?: () => void;
+export interface BookingFormProps {
+  role?: string;
   initialData?: any;
+  onSubmit?: (data: any) => Promise<{success: boolean; error?: string} | void>;
+  onCancel?: () => void;
 }
 
 interface CustomerDetails {
@@ -40,6 +46,8 @@ interface CustomerDetails {
   state: string;
   pincode: string;
   dl_number: string;
+  dl_expiry: Date | null;
+  dob: Date | null;
   aadhar_number: string;
   father_phone: string;
   mother_phone: string;
@@ -69,63 +77,354 @@ interface DateTimeValue {
   time: string;
 }
 
-interface FormDataWithDateTime {
-  customer_id: string;
+interface FormData {
+  isExistingCustomer: boolean;
+  searchTerm: string;
+  selectedCustomerId: string | null;
+  customerDetails: CustomerDetails;
   vehicle_id: string;
-  start_date: DateTimeValue;
-  end_date: DateTimeValue;
-  base_price: string;
-  additional_charges: string;
-  discount: string;
+  start_date: Date | null;
+  end_date: Date | null;
   notes: string;
+  payment_method: string;
+  pricing: {
+    base_price: number;
+    discount: number;
+    security_deposit: number;
+    tax_rate: number;
+    additional_charges: number;
+  };
+  documents: Documents;
+  fullName: string;
+  email: string;
+  phone: string;
+  dob: Date | null;
+  dlNumber: string;
+  dlExpiryDate: Date | null;
+  aadhaarNumber: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  vehicleModel: string;
+  rentalPackage: string;
+  baseRate: number;
+  securityDeposit: number;
+  files: Record<string, File | null>;
+  termsAccepted: boolean;
 }
+
+const TimeSelector = ({ 
+  selected, 
+  onChange, 
+  className 
+}: { 
+  selected: Date | null, 
+  onChange: (date: Date) => void,
+  className?: string 
+}) => {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  
+  // Generate time options for 24 hours (12am to 11:30pm)
+  const generateTimeOptions = () => {
+    const options = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute of [0, 30]) {
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+        
+        options.push({
+          hour,
+          minute,
+          display: `${displayHour}:${minute === 0 ? '00' : minute} ${period}`
+        });
+      }
+    }
+    return options;
+  };
+  
+  const timeOptions = generateTimeOptions();
+  
+  // Format the currently selected time
+  const formatSelectedTime = () => {
+    if (!selected) return "Select time";
+    
+    const hours = selected.getHours();
+    const minutes = selected.getMinutes();
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+    
+    return `${displayHours}:${minutes === 0 ? '00' : minutes} ${period}`;
+  };
+  
+  // Handle time selection
+  const handleTimeSelect = (hour: number, minute: number) => {
+    let newDate: Date;
+    
+    if (selected) {
+      // Create a new date object to avoid mutating the original
+      newDate = new Date(selected);
+    } else {
+      newDate = new Date();
+    }
+    
+    // Set the hours and minutes
+    newDate.setHours(hour);
+    newDate.setMinutes(minute);
+    newDate.setSeconds(0);
+    newDate.setMilliseconds(0);
+    
+    // Call the onChange prop with the new date
+    onChange(newDate);
+    setShowDropdown(false);
+  };
+  
+  // Check if a time option is currently selected
+  const isTimeSelected = (hour: number, minute: number) => {
+    if (!selected) return false;
+    return selected.getHours() === hour && selected.getMinutes() === minute;
+  };
+  
+  // Handle clicks outside the dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current && 
+        !dropdownRef.current.contains(event.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+    
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
+  
+  // Group time options by period (Morning, Afternoon, Evening)
+  const morningTimes = timeOptions.slice(0, 24); // 12am to 11:30am
+  const afternoonTimes = timeOptions.slice(24, 36); // 12pm to 5:30pm
+  const eveningTimes = timeOptions.slice(36); // 6pm to 11:30pm
+  
+  return (
+    <div className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        className={`w-full flex items-center justify-between py-2 px-3 border border-gray-300 rounded shadow-sm text-sm bg-white hover:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors ${className || ""}`}
+        onClick={() => setShowDropdown(!showDropdown)}
+      >
+        <span className={!selected ? 'text-gray-400' : 'text-gray-900 font-medium'}>
+          {formatSelectedTime()}
+        </span>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+          className="w-4 h-4 text-gray-500"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </button>
+      
+      {showDropdown && (
+        <div 
+          ref={dropdownRef}
+          className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-xl z-50"
+          style={{ maxHeight: '280px', overflowY: 'auto' }}
+        >
+          <div className="time-selector-container">
+            {/* Morning Times */}
+            <div className="sticky top-0 border-b border-gray-100 py-2 px-3 bg-gray-50">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Morning</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1 p-2">
+              {morningTimes.map((time, index) => (
+                <button
+                  key={`morning-${index}`}
+                  type="button"
+                  className={`text-center py-2 px-1 text-sm rounded-md transition-colors ${
+                    isTimeSelected(time.hour, time.minute)
+                      ? 'bg-orange-600 text-white font-medium shadow-sm'
+                      : 'text-gray-700 hover:bg-orange-50'
+                  }`}
+                  onClick={() => handleTimeSelect(time.hour, time.minute)}
+                >
+                  {time.display}
+                </button>
+              ))}
+            </div>
+            
+            {/* Afternoon Times */}
+            <div className="sticky top-0 border-b border-t border-gray-100 py-2 px-3 bg-gray-50">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Afternoon</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1 p-2">
+              {afternoonTimes.map((time, index) => (
+                <button
+                  key={`afternoon-${index}`}
+                  type="button"
+                  className={`text-center py-2 px-1 text-sm rounded-md transition-colors ${
+                    isTimeSelected(time.hour, time.minute)
+                      ? 'bg-orange-600 text-white font-medium shadow-sm'
+                      : 'text-gray-700 hover:bg-orange-50'
+                  }`}
+                  onClick={() => handleTimeSelect(time.hour, time.minute)}
+                >
+                  {time.display}
+                </button>
+              ))}
+            </div>
+            
+            {/* Evening Times */}
+            <div className="sticky top-0 border-b border-t border-gray-100 py-2 px-3 bg-gray-50">
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Evening</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1 p-2">
+              {eveningTimes.map((time, index) => (
+                <button
+                  key={`evening-${index}`}
+                  type="button"
+                  className={`text-center py-2 px-1 text-sm rounded-md transition-colors ${
+                    isTimeSelected(time.hour, time.minute)
+                      ? 'bg-orange-600 text-white font-medium shadow-sm'
+                      : 'text-gray-700 hover:bg-orange-50'
+                  }`}
+                  onClick={() => handleTimeSelect(time.hour, time.minute)}
+                >
+                  {time.display}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const getDatePickerWrapperStyles = () => {
+  return {
+    datePickerWrapper: "relative mb-4",
+    datePickerContainer: "flex flex-col space-y-2",
+    datePickerHeader: "text-sm font-medium text-gray-700 mb-1",
+    dateInputWrapper: "relative flex items-center",
+    datePickerInput: "block w-full px-4 py-2.5 border border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm pr-10 bg-white text-gray-800 placeholder-gray-400",
+    timePickerInput: "block w-full px-4 py-2.5 border border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm pr-10 bg-white text-gray-800 placeholder-gray-400",
+    datePickerIcon: "absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none",
+    calendarSection: "flex w-full justify-between",
+    customTimePicker: "block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm bg-white text-gray-800 hover:border-orange-400 transition-colors",
+    datePicker: 'w-full',
+    dateInput: 'w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500',
+  };
+};
 
 export default function BookingForm({ role, onSubmit, onCancel, initialData }: BookingFormProps) {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [customers, setCustomers] = useState<CustomerWithDetails[]>([]);
   const [isNewCustomer, setIsNewCustomer] = useState(true);
   const signaturePadRef = useRef<any>(null);
   
-  const [formData, setFormData] = useState({
-    customer_id: initialData?.customer_id || '',
-    vehicle_id: initialData?.vehicle_id || '',
-    start_date: {
-      date: initialData?.start_date ? new Date(initialData.start_date).toISOString().split('T')[0] : '',
-      time: initialData?.start_date ? new Date(initialData.start_date).toTimeString().slice(0, 5) : ''
+  const [formData, setFormData] = useState<FormData>({
+    isExistingCustomer: false,
+    searchTerm: '',
+    selectedCustomerId: null,
+    customerDetails: {
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      pincode: '',
+      dl_number: '',
+      dl_expiry: null,
+      dob: null,
+      aadhar_number: '',
+      father_phone: '',
+      mother_phone: '',
+      emergency_contact1: '',
+      emergency_contact2: '',
+      photo: null,
+      dl_front: null,
+      dl_back: null,
+      aadhar_front: null,
+      aadhar_back: null
     },
-    end_date: {
-      date: initialData?.end_date ? new Date(initialData.end_date).toISOString().split('T')[0] : '',
-      time: initialData?.end_date ? new Date(initialData.end_date).toTimeString().slice(0, 5) : ''
+    vehicle_id: '',
+    start_date: null,
+    end_date: null,
+    notes: '',
+    payment_method: 'cash',
+    pricing: {
+      base_price: 0,
+      discount: 0,
+      security_deposit: 0,
+      tax_rate: 0,
+      additional_charges: 0
     },
-    base_price: initialData?.base_price || '',
-    additional_charges: initialData?.additional_charges || '0',
-    discount: initialData?.discount || '0',
-    notes: initialData?.notes || ''
-  });
-
-  const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
-    first_name: '',
-    last_name: '',
+    documents: {
+      photo: null,
+      dl_front: null,
+      dl_back: null,
+      aadhar_front: null,
+      aadhar_back: null
+    },
+    fullName: '',
     email: '',
     phone: '',
+    dob: null,
+    dlNumber: '',
+    dlExpiryDate: null,
+    aadhaarNumber: '',
     address: '',
     city: '',
     state: '',
     pincode: '',
-    dl_number: '',
-    aadhar_number: '',
-    father_phone: '',
-    mother_phone: '',
-    emergency_contact1: '',
-    emergency_contact2: '',
+    vehicleModel: '',
+    rentalPackage: '',
+    baseRate: 0,
+    securityDeposit: 0,
+    files: {},
+    termsAccepted: false
+  });
+
+  const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+    address: "",
+    city: "",
+    state: "",
+    pincode: "",
+    dl_number: "",
+    dl_expiry: null,
+    dob: null,
+    aadhar_number: "",
+    father_phone: "",
+    mother_phone: "",
+    emergency_contact1: "",
+    emergency_contact2: "",
     photo: null,
     dl_front: null,
     dl_back: null,
     aadhar_front: null,
-    aadhar_back: null,
+    aadhar_back: null
   });
 
   const [documents, setDocuments] = useState<Documents>({
@@ -150,31 +449,40 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const fetchVehiclesAndCustomers = useCallback(async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      
-      // Fetch available vehicles
-      const vehiclesResponse = await fetch('/api/vehicles?status=available', {
-        credentials: 'include'
+      // Fetch vehicles from the API
+      const response = await fetch('/api/vehicles', {
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
       });
-      if (!vehiclesResponse.ok) {
+      
+      if (!response.ok) {
         throw new Error('Failed to fetch vehicles');
       }
-      const vehiclesData = await vehiclesResponse.json();
-      setVehicles(vehiclesData.vehicles || []);
 
-      // Fetch customers
-      const customersResponse = await fetch('/api/customers', {
-        credentials: 'include'
-      });
-      if (!customersResponse.ok) {
-        throw new Error('Failed to fetch customers');
+      const result = await response.json();
+      
+      // Handle the API response structure
+      if (result.success && result.data?.vehicles) {
+        setVehicles(result.data.vehicles);
+      } else if (result.vehicles) {
+        // Fallback for backwards compatibility
+        setVehicles(result.vehicles);
+      } else {
+        // If neither structure exists, set to empty array
+        setVehicles([]);
+        console.warn('No vehicles found in API response:', result);
       }
-      const customersData = await customersResponse.json();
-      setCustomers(customersData.customers || []);
-    } catch (err) {
-      console.error('Error fetching data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      
+      // Add customer fetching logic here if needed in the future
+      
+    } catch (error) {
+      console.error('Error fetching vehicles:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch vehicles');
     } finally {
       setIsLoading(false);
     }
@@ -209,8 +517,10 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
 
   useEffect(() => {
     if (formData.vehicle_id) {
-      const vehicle = vehicles.find(v => v.id === formData.vehicle_id);
+      const vehicle = vehicles.find(v => v.id.toString() === formData.vehicle_id);
       setSelectedVehicle(vehicle || null);
+    } else {
+      setSelectedVehicle(null);
     }
   }, [formData.vehicle_id, vehicles]);
 
@@ -225,25 +535,29 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
         return;
       }
 
-      if (!isNewCustomer && !formData.customer_id && !selectedCustomer) {
+      if (!isNewCustomer && !formData.selectedCustomerId && !selectedCustomer) {
         toast.error('Please search and select an existing customer');
         return;
       }
 
-      // Combine date and time for start and end dates
-      const combinedStartDate = new Date(`${formData.start_date.date}T${formData.start_date.time}`);
-      const combinedEndDate = new Date(`${formData.end_date.date}T${formData.end_date.time}`);
-
       // Validate dates
-      if (isNaN(combinedStartDate.getTime()) || isNaN(combinedEndDate.getTime())) {
+      if (!formData.start_date || !formData.end_date) {
         toast.error('Please select valid dates and times');
         return;
       }
 
-      if (combinedEndDate <= combinedStartDate) {
+      if (formData.end_date <= formData.start_date) {
         toast.error('End date must be after start date');
         return;
       }
+
+      // Format dates properly
+      const startDate = new Date(formData.start_date);
+      const endDate = new Date(formData.end_date);
+      
+      // Ensure seconds and milliseconds are zeroed out
+      startDate.setSeconds(0, 0);
+      endDate.setSeconds(0, 0);
 
       // Get signature data if available
       const signatureData = signaturePadRef.current?.toDataURL();
@@ -251,14 +565,19 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
       // Prepare base booking data
       const bookingData: any = {
         vehicle_id: formData.vehicle_id,
-        start_date: combinedStartDate.toISOString(),
-        end_date: combinedEndDate.toISOString(),
-        base_price: parseFloat(formData.base_price) || 0,
-        additional_charges: parseFloat(formData.additional_charges) || 0,
-        discount: parseFloat(formData.discount) || 0,
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+        base_price: parseFloat(formData.pricing.base_price.toString()) || 0,
+        discount: parseFloat(formData.pricing.discount.toString()) || 0,
+        payment_method: formData.payment_method,
         notes: formData.notes,
         signature: signatureData
       };
+
+      console.log('Submitting booking with dates:', {
+        start: startDate.toISOString(), 
+        end: endDate.toISOString()
+      });
 
       // Handle new customer case
       if (isNewCustomer) {
@@ -321,8 +640,21 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
       }
 
       setIsLoading(true);
-      await onSubmit?.(bookingData);
+      
+      // Send the form data to the server
+      const response = await onSubmit?.(bookingData);
+      
+      if (response && 'success' in response && !response.success) {
+        throw new Error(response.error || 'Failed to submit booking');
+      }
+      
       toast.success('Booking submitted successfully');
+      
+      // Clear form or redirect as needed
+      setTimeout(() => {
+        router.push('/bookings');
+      }, 1500);
+      
     } catch (error) {
       console.error('Error submitting form:', error);
       setError(error instanceof Error ? error.message : 'Failed to submit form');
@@ -333,8 +665,19 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const { name, value, type } = e.target;
+    
+    if (type === 'number') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value === '' ? 0 : parseFloat(value)
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   const handleCustomerDetailsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -360,6 +703,7 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
   const handleSignatureClear = () => {
     if (signaturePadRef.current) {
       signaturePadRef.current.clear();
+      setSignatureData(null);
     }
   };
 
@@ -396,7 +740,7 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
         setSelectedCustomer(customer);
         setFormData(prev => ({
           ...prev,
-          customer_id: customer.id
+          selectedCustomerId: customer.id
         }));
         toast.success('Customer found');
       } else {
@@ -408,13 +752,79 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
     }
   };
 
-  const handleDateTimeChange = (field: 'start_date' | 'end_date', type: 'date' | 'time', value: string) => {
+  const handleStartDateChange = (date: Date | null) => {
+    if (!date) return;
+    
+    // Create a new date object to avoid mutation
+    const newDate = new Date(date);
+    
+    // If we're changing date only, preserve the time from current start_date
+    if (formData.start_date) {
+      const hours = formData.start_date.getHours();
+      const minutes = formData.start_date.getMinutes();
+      newDate.setHours(hours);
+      newDate.setMinutes(minutes);
+    } else {
+      // Default to 10:00 AM if no time was previously set
+      newDate.setHours(10);
+      newDate.setMinutes(0);
+    }
+    
+    // Always reset seconds and milliseconds
+    newDate.setSeconds(0, 0);
+    
     setFormData(prev => ({
       ...prev,
-      [field]: {
-        ...prev[field],
-        [type]: value
-      }
+      start_date: newDate,
+      // If end date is before new start date, update end date too
+      end_date: prev.end_date && prev.end_date < newDate 
+        ? addDays(new Date(newDate), 1) 
+        : prev.end_date
+    }));
+    
+    console.log('Updated start date:', newDate.toISOString());
+  };
+
+  const handleEndDateChange = (date: Date | null) => {
+    if (!date) return;
+    
+    // Create a new date object to avoid mutation
+    const newDate = new Date(date);
+    
+    // If we're changing date only, preserve the time from current end_date
+    if (formData.end_date) {
+      const hours = formData.end_date.getHours();
+      const minutes = formData.end_date.getMinutes();
+      newDate.setHours(hours);
+      newDate.setMinutes(minutes);
+    } else {
+      // Default to 10:00 AM if no time was previously set
+      newDate.setHours(10);
+      newDate.setMinutes(0);
+    }
+    
+    // Always reset seconds and milliseconds
+    newDate.setSeconds(0, 0);
+    
+    setFormData(prev => ({
+      ...prev,
+      end_date: newDate
+    }));
+    
+    console.log('Updated end date:', newDate.toISOString());
+  };
+
+  // Calculate total amount
+  const calculateTotal = () => {
+    const base = formData.baseRate || 0;
+    const deposit = formData.securityDeposit || 0;
+    return base + deposit;
+  };
+
+  const handleDateChange = (date: Date | null, field: 'dob' | 'dl_expiry') => {
+    setCustomerDetails(prev => ({
+      ...prev,
+      [field]: date
     }));
   };
 
@@ -427,726 +837,673 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
   }
 
   return (
-    <div className="max-w-5xl mx-auto bg-white shadow-sm border border-gray-100 rounded-xl overflow-hidden">
-      <form onSubmit={handleSubmit} className="divide-y divide-gray-100">
-        {error && (
-          <div className="p-4">
-            <ErrorAlert message={error} />
+    <form onSubmit={handleSubmit} className="max-w-5xl mx-auto bg-white shadow rounded border">
+      {/* Customer Details Section */}
+      <div className="border-b border-gray-200">
+        <div className="p-4">
+          <div className="mb-3">
+            <h3 className="text-base font-semibold text-gray-900">Customer Details</h3>
+            <p className="text-xs text-gray-500">Personal information</p>
           </div>
-        )}
-
-        {/* Customer Section */}
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-6">
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Customer Details</h3>
-              <p className="mt-1 text-sm text-gray-500">Enter customer information for the booking</p>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Full Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="fullName"
+                value={formData.fullName}
+                onChange={handleInputChange}
+                required
+                placeholder="Enter full name"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
             </div>
             
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setIsNewCustomer(false)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  !isNewCustomer 
-                    ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-700/10' 
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                }`}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Email <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                required
+                placeholder="Enter email address"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Phone <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="tel"
+                name="phone"
+                value={formData.phone}
+                onChange={handleInputChange}
+                required
+                placeholder="Enter phone number"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Date of Birth <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <DatePicker
+                  selected={formData.dob}
+                  onChange={(date) => setFormData({...formData, dob: date})}
+                  dateFormat="dd/MM/yyyy"
+                  showYearDropdown
+                  scrollableYearDropdown
+                  yearDropdownItemNumber={80}
+                  maxDate={new Date()}
+                  placeholderText="Select date of birth"
+                  className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  showPopperArrow={false}
+                  calendarClassName="shadow-lg rounded-md border-0"
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-gray-500">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                DL Number <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="dlNumber"
+                value={formData.dlNumber}
+                onChange={handleInputChange}
+                required
+                placeholder="Enter driving license number"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                DL Expiry Date <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <DatePicker
+                  selected={formData.dlExpiryDate}
+                  onChange={(date) => setFormData({...formData, dlExpiryDate: date})}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="Select expiry date"
+                  minDate={new Date()}
+                  className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  showPopperArrow={false}
+                  calendarClassName="shadow-lg rounded-md border-0"
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-gray-500">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Aadhaar Number <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="aadhaarNumber"
+                value={formData.aadhaarNumber}
+                onChange={handleInputChange}
+                required
+                placeholder="Enter Aadhaar number"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Address <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="address"
+                value={formData.address}
+                onChange={handleInputChange}
+                required
+                placeholder="Enter full address"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                City <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="city"
+                value={formData.city}
+                onChange={handleInputChange}
+                required
+                placeholder="Enter city"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                State <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="state"
+                value={formData.state}
+                onChange={handleInputChange}
+                required
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
               >
-                Existing Customer
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsNewCustomer(true)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  isNewCustomer 
-                    ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-700/10' 
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                New Customer
-              </button>
+                <option value="">Select state</option>
+                <option value="AP">Andhra Pradesh</option>
+                <option value="AR">Arunachal Pradesh</option>
+                <option value="AS">Assam</option>
+                <option value="BR">Bihar</option>
+                <option value="CT">Chhattisgarh</option>
+                <option value="GA">Goa</option>
+                <option value="GJ">Gujarat</option>
+                <option value="HR">Haryana</option>
+                <option value="HP">Himachal Pradesh</option>
+                <option value="JK">Jammu and Kashmir</option>
+                <option value="JH">Jharkhand</option>
+                <option value="KA">Karnataka</option>
+                <option value="KL">Kerala</option>
+                <option value="MP">Madhya Pradesh</option>
+                <option value="MH">Maharashtra</option>
+                <option value="MN">Manipur</option>
+                <option value="ML">Meghalaya</option>
+                <option value="MZ">Mizoram</option>
+                <option value="NL">Nagaland</option>
+                <option value="OR">Odisha</option>
+                <option value="PB">Punjab</option>
+                <option value="RJ">Rajasthan</option>
+                <option value="SK">Sikkim</option>
+                <option value="TN">Tamil Nadu</option>
+                <option value="TG">Telangana</option>
+                <option value="TR">Tripura</option>
+                <option value="UT">Uttarakhand</option>
+                <option value="UP">Uttar Pradesh</option>
+                <option value="WB">West Bengal</option>
+                <option value="AN">Andaman and Nicobar Islands</option>
+                <option value="CH">Chandigarh</option>
+                <option value="DN">Dadra and Nagar Haveli</option>
+                <option value="DD">Daman and Diu</option>
+                <option value="DL">Delhi</option>
+                <option value="LD">Lakshadweep</option>
+                <option value="PY">Puducherry</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Pin Code <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="pincode"
+                value={formData.pincode}
+                onChange={handleInputChange}
+                required
+                placeholder="Enter pin code"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
             </div>
           </div>
-
-          {!isNewCustomer ? (
-            <div className="space-y-4">
-              <div className="flex gap-4 items-start">
-                <div className="flex-grow">
-                  <label htmlFor="aadhar_number" className="block text-sm font-medium text-gray-700 mb-1">
-                    Search by Aadhar Number
-                  </label>
-                  <div className="flex gap-3">
-                    <input
-                      type="text"
-                      id="aadhar_number"
-                      value={aadharNumber}
-                      onChange={(e) => setAadharNumber(e.target.value)}
-                      className="flex-grow rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                      placeholder="Enter Aadhar number"
-                    />
-                    <button
-                      type="button"
-                      onClick={searchCustomerByAadhar}
-                      disabled={isLoading}
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isLoading ? (
-                        <>
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          Searching...
-                        </>
-                      ) : (
-                        'Search'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {selectedCustomer && (
-                <div className="mt-4 p-4 bg-orange-50 rounded-lg border border-orange-100">
-                  <h4 className="text-sm font-medium text-gray-900 mb-3">Customer Found</h4>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-500">Name</p>
-                      <p className="text-sm font-medium text-gray-900">
-                        {selectedCustomer.first_name} {selectedCustomer.last_name}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Phone</p>
-                      <p className="text-sm font-medium text-gray-900">{selectedCustomer.phone}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Email</p>
-                      <p className="text-sm font-medium text-gray-900">{selectedCustomer.email}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-1">
-                    First Name
-                  </label>
-                  <input
-                    type="text"
-                    name="first_name"
-                    id="first_name"
-                    required
-                    value={customerDetails.first_name}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    id="email"
-                    required
-                    value={customerDetails.email}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
-                    Address
-                  </label>
-                  <input
-                    type="text"
-                    name="address"
-                    id="address"
-                    required
-                    value={customerDetails.address}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="city" className="block text-sm font-medium text-gray-700 mb-1">
-                    City
-                  </label>
-                  <input
-                    type="text"
-                    name="city"
-                    id="city"
-                    required
-                    value={customerDetails.city}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="dl_number" className="block text-sm font-medium text-gray-700 mb-1">
-                    Driving License Number
-                  </label>
-                  <input
-                    type="text"
-                    name="dl_number"
-                    id="dl_number"
-                    required
-                    value={customerDetails.dl_number}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="father_phone" className="block text-sm font-medium text-gray-700 mb-1">
-                    Father's Phone
-                  </label>
-                  <input
-                    type="tel"
-                    name="father_phone"
-                    id="father_phone"
-                    required
-                    value={customerDetails.father_phone}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="emergency_contact1" className="block text-sm font-medium text-gray-700 mb-1">
-                    Emergency Contact 1
-                  </label>
-                  <input
-                    type="tel"
-                    name="emergency_contact1"
-                    id="emergency_contact1"
-                    required
-                    value={customerDetails.emergency_contact1}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-1">
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    name="last_name"
-                    id="last_name"
-                    required
-                    value={customerDetails.last_name}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone
-                  </label>
-                  <input
-                    type="tel"
-                    name="phone"
-                    id="phone"
-                    required
-                    value={customerDetails.phone}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="state" className="block text-sm font-medium text-gray-700 mb-1">
-                    State
-                  </label>
-                  <input
-                    type="text"
-                    name="state"
-                    id="state"
-                    required
-                    value={customerDetails.state}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="pincode" className="block text-sm font-medium text-gray-700 mb-1">
-                    Pincode
-                  </label>
-                  <input
-                    type="text"
-                    name="pincode"
-                    id="pincode"
-                    required
-                    value={customerDetails.pincode}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="aadhar_number" className="block text-sm font-medium text-gray-700 mb-1">
-                    Aadhar Number
-                  </label>
-                  <input
-                    type="text"
-                    name="aadhar_number"
-                    id="aadhar_number"
-                    required
-                    value={customerDetails.aadhar_number}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="mother_phone" className="block text-sm font-medium text-gray-700 mb-1">
-                    Mother's Phone
-                  </label>
-                  <input
-                    type="tel"
-                    name="mother_phone"
-                    id="mother_phone"
-                    required
-                    value={customerDetails.mother_phone}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="emergency_contact2" className="block text-sm font-medium text-gray-700 mb-1">
-                    Emergency Contact 2
-                  </label>
-                  <input
-                    type="tel"
-                    name="emergency_contact2"
-                    id="emergency_contact2"
-                    required
-                    value={customerDetails.emergency_contact2}
-                    onChange={handleCustomerDetailsChange}
-                    className="w-full rounded-lg border-gray-300 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
+      </div>
 
-        {/* Rest of the booking form */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          {/* Vehicle Selection */}
-          <div>
-            <label htmlFor="vehicle_id" className="block text-sm font-medium text-gray-700">
-              Vehicle
+      {/* Vehicle and Pricing Section */}
+      <div className="border-b border-gray-200">
+        <div className="p-4">
+          <div className="mb-3">
+            <h3 className="text-base font-semibold text-gray-900">Vehicle & Pricing</h3>
+            <p className="text-xs text-gray-500">Select vehicle and view pricing details</p>
+          </div>
+          
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Vehicle <span className="text-red-500">*</span>
             </label>
             <select
-              id="vehicle_id"
               name="vehicle_id"
               value={formData.vehicle_id}
               onChange={handleInputChange}
               required
-              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm rounded-md"
+              disabled={isLoading}
+              className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
             >
-              <option value="">Select a vehicle</option>
-              {vehicles.map(vehicle => (
-                <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.model} - {vehicle.number_plate}
-                </option>
-              ))}
+              <option value="">{isLoading ? 'Loading vehicles...' : 'Select a vehicle'}</option>
+              {!isLoading && vehicles.length === 0 ? (
+                <option value="" disabled className="text-red-500">No vehicles available in the system. Please add vehicles first.</option>
+              ) : (
+                vehicles.map((vehicle) => (
+                  <option key={vehicle.id} value={vehicle.id.toString()}>
+                    {vehicle.make || vehicle.manufacturer} {vehicle.model} - {vehicle.number_plate}
+                  </option>
+                ))
+              )}
             </select>
+            {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
           </div>
-
-          {/* Date and Time Selection */}
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 p-6">
-            {/* Start Date and Time */}
-            <div className="space-y-4">
-              <h4 className="text-sm font-medium text-gray-900">Start Date & Time</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="start_date" className="block text-sm font-medium text-gray-700 mb-1">
-                    Date
-                  </label>
-                  <input
-                    type="date"
-                    id="start_date"
-                    value={formData.start_date.date}
-                    onChange={(e) => handleDateTimeChange('start_date', 'date', e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="start_time" className="block text-sm font-medium text-gray-700 mb-1">
-                    Time
-                  </label>
-                  <input
-                    type="time"
-                    id="start_time"
-                    value={formData.start_date.time}
-                    onChange={(e) => handleDateTimeChange('start_date', 'time', e.target.value)}
-                    required
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* End Date and Time */}
-            <div className="space-y-4">
-              <h4 className="text-sm font-medium text-gray-900">End Date & Time</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="end_date" className="block text-sm font-medium text-gray-700 mb-1">
-                    Date
-                  </label>
-                  <input
-                    type="date"
-                    id="end_date"
-                    value={formData.end_date.date}
-                    onChange={(e) => handleDateTimeChange('end_date', 'date', e.target.value)}
-                    min={formData.start_date.date || new Date().toISOString().split('T')[0]}
-                    required
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="end_time" className="block text-sm font-medium text-gray-700 mb-1">
-                    Time
-                  </label>
-                  <input
-                    type="time"
-                    id="end_time"
-                    value={formData.end_date.time}
-                    onChange={(e) => handleDateTimeChange('end_date', 'time', e.target.value)}
-                    required
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Base Price */}
-          <div>
-            <label htmlFor="base_price" className="block text-sm font-medium text-gray-700">
-              Base Price
-            </label>
-            <div className="mt-1 relative rounded-md shadow-sm">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <span className="text-gray-500 sm:text-sm">₹</span>
-              </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Vehicle Details
+              </label>
               <input
-                type="number"
-                name="base_price"
-                id="base_price"
-                value={formData.base_price}
-                onChange={handleInputChange}
-                required
-                min="0"
-                step="0.01"
-                className="mt-1 block w-full pl-7 pr-12 border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+                type="text"
+                value={selectedVehicle ? `${selectedVehicle.make || selectedVehicle.manufacturer || ''} ${selectedVehicle.model} - ${selectedVehicle.number_plate}` : ""}
+                readOnly
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm bg-gray-50 text-sm"
               />
             </div>
           </div>
-
-          {/* Additional Charges - Only shown for admin */}
-          {role === 'admin' && (
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label htmlFor="additional_charges" className="block text-sm font-medium text-gray-700">
-                Additional Charges
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Base Rate (₹) <span className="text-red-500">*</span>
               </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-gray-500 sm:text-sm">₹</span>
+              <input
+                type="number"
+                name="baseRate"
+                value={formData.baseRate}
+                onChange={handleInputChange}
+                required
+                placeholder="0.00"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Security Deposit (₹) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                name="securityDeposit"
+                value={formData.securityDeposit}
+                onChange={handleInputChange}
+                required
+                placeholder="0.00"
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Total Amount (₹)
+              </label>
+              <input
+                type="number"
+                value={calculateTotal()}
+                readOnly
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm bg-gray-50 text-sm"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Date and Time Section - Enhanced UI */}
+      <div className="border-b border-gray-200">
+        <div className="p-4">
+          <div className="mb-4">
+            <h3 className="text-base font-semibold text-gray-900">Rental Period</h3>
+            <p className="text-xs text-gray-500">Select start and end dates and times</p>
+          </div>
+          
+          <div className="space-y-5">
+            {/* Start Date and Time */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <DatePicker
+                    selected={formData.start_date}
+                    onChange={handleStartDateChange}
+                    selectsStart
+                    startDate={formData.start_date}
+                    endDate={formData.end_date}
+                    minDate={new Date()}
+                    placeholderText="Select start date"
+                    dateFormat="dd/MM/yyyy"
+                    className="block w-full py-2 px-3 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+                    showPopperArrow={false}
+                    calendarClassName="shadow-lg rounded-md border-0"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-gray-500">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                    </svg>
+                  </div>
                 </div>
-                <input
-                  type="number"
-                  name="additional_charges"
-                  id="additional_charges"
-                  value={formData.additional_charges}
-                  onChange={handleInputChange}
-                  min="0"
-                  step="0.01"
-                  className="mt-1 block w-full pl-7 pr-12 border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+              </div>
+
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Time <span className="text-red-500">*</span>
+                </label>
+                <TimeSelector
+                  selected={formData.start_date}
+                  onChange={(date) => {
+                    // Create a new date to ensure we don't mutate the original
+                    if (formData.start_date) {
+                      const newDate = new Date(formData.start_date);
+                      newDate.setHours(date.getHours());
+                      newDate.setMinutes(date.getMinutes());
+                      newDate.setSeconds(0, 0);
+                      setFormData(prev => ({ ...prev, start_date: newDate }));
+                    } else {
+                      setFormData(prev => ({ ...prev, start_date: date }));
+                    }
+                  }}
                 />
               </div>
             </div>
-          )}
-
-          {/* Discount - Only shown for admin */}
-          {role === 'admin' && (
-            <div>
-              <label htmlFor="discount" className="block text-sm font-medium text-gray-700">
-                Discount
-              </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="text-gray-500 sm:text-sm">₹</span>
+            
+            {/* End Date and Time */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  End Date <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <DatePicker
+                    selected={formData.end_date}
+                    onChange={handleEndDateChange}
+                    selectsEnd
+                    startDate={formData.start_date}
+                    endDate={formData.end_date}
+                    minDate={formData.start_date || new Date()}
+                    placeholderText="Select end date"
+                    dateFormat="dd/MM/yyyy"
+                    className="block w-full py-2 px-3 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+                    showPopperArrow={false}
+                    calendarClassName="shadow-lg rounded-md border-0"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-gray-500">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                    </svg>
+                  </div>
                 </div>
-                <input
-                  type="number"
-                  name="discount"
-                  id="discount"
-                  value={formData.discount}
-                  onChange={handleInputChange}
-                  min="0"
-                  step="0.01"
-                  className="mt-1 block w-full pl-7 pr-12 border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+              </div>
+
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  End Time <span className="text-red-500">*</span>
+                </label>
+                <TimeSelector
+                  selected={formData.end_date}
+                  onChange={(date) => {
+                    // Create a new date to ensure we don't mutate the original
+                    if (formData.end_date) {
+                      const newDate = new Date(formData.end_date);
+                      newDate.setHours(date.getHours());
+                      newDate.setMinutes(date.getMinutes());
+                      newDate.setSeconds(0, 0);
+                      setFormData(prev => ({ ...prev, end_date: newDate }));
+                    } else {
+                      setFormData(prev => ({ ...prev, end_date: date }));
+                    }
+                  }}
                 />
               </div>
             </div>
-          )}
+          
+            {/* Rental Duration Display (Optional enhancement) */}
+            {formData.start_date && formData.end_date && (
+              <div className="mt-2 bg-orange-50 border border-orange-100 rounded-md p-3">
+                <p className="text-sm text-orange-800 flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Rental duration: {Math.ceil((formData.end_date.getTime() - formData.start_date.getTime()) / (1000 * 60 * 60 * 24))} days
+                </p>
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Notes */}
-        <div className="col-span-2">
-          <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
-            Notes
-          </label>
-          <textarea
-            name="notes"
-            id="notes"
-            value={formData.notes}
-            onChange={handleInputChange}
-            rows={3}
-            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-          />
+      </div>
+      
+      {/* Notes & Payment Section */}
+      <div className="border-b border-gray-200">
+        <div className="p-4">
+          <div className="mb-3">
+            <h3 className="text-base font-semibold text-gray-900">Notes & Payment</h3>
+            <p className="text-xs text-gray-500">Additional information</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Notes
+              </label>
+              <textarea
+                name="notes"
+                value={formData.notes}
+                onChange={handleInputChange}
+                rows={2}
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+                placeholder="Enter any additional notes or special requirements"
+              ></textarea>
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Payment Method <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="payment_method"
+                value={formData.payment_method}
+                onChange={handleInputChange}
+                required
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              >
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="card">Card</option>
+                <option value="netbanking">Net Banking</option>
+              </select>
+            </div>
+          </div>
         </div>
+      </div>
 
-        {/* Signature Section */}
-        <div className="mt-6">
-          <h4 className="text-sm font-medium text-gray-900 mb-2">Customer Signature</h4>
-          <div className="border rounded-lg p-4">
-            <SignaturePad
-              ref={signaturePadRef}
-              canvasProps={{
-                className: 'signature-canvas w-full h-40 border rounded',
-              }}
-            />
-            <div className="mt-2 flex justify-end">
+      {/* Documents Section */}
+      <div className="border-b border-gray-200">
+        <div className="p-4">
+          <div className="mb-3">
+            <h3 className="text-base font-semibold text-gray-900">Document Upload</h3>
+            <p className="text-xs text-gray-500">Upload required identity documents</p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Photo ID <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                name="photoID"
+                onChange={(e) => handleFileChange(e, 'photo')}
+                accept="image/*"
+                required
+                className="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-2.5 file:text-xs file:font-medium file:border-0 file:rounded file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 border border-gray-300 rounded shadow-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                DL Front <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                name="dlFront"
+                onChange={(e) => handleFileChange(e, 'dl_front')}
+                accept="image/*"
+                required
+                className="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-2.5 file:text-xs file:font-medium file:border-0 file:rounded file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 border border-gray-300 rounded shadow-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                DL Back <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                name="dlBack"
+                onChange={(e) => handleFileChange(e, 'dl_back')}
+                accept="image/*"
+                required
+                className="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-2.5 file:text-xs file:font-medium file:border-0 file:rounded file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 border border-gray-300 rounded shadow-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Aadhaar Front <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                name="aadhaarFront"
+                onChange={(e) => handleFileChange(e, 'aadhar_front')}
+                accept="image/*"
+                required
+                className="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-2.5 file:text-xs file:font-medium file:border-0 file:rounded file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 border border-gray-300 rounded shadow-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Aadhaar Back <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                name="aadhaarBack"
+                onChange={(e) => handleFileChange(e, 'aadhar_back')}
+                accept="image/*"
+                required
+                className="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-2.5 file:text-xs file:font-medium file:border-0 file:rounded file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100 border border-gray-300 rounded shadow-sm"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Terms & Conditions Section */}
+      <div className="border-b border-gray-200">
+        <div className="p-4">
+          <div className="mb-3">
+            <h3 className="text-base font-semibold text-gray-900">Terms & Conditions</h3>
+            <p className="text-xs text-gray-500">Review and accept rental terms</p>
+          </div>
+          
+          <div className="h-24 overflow-y-auto p-2 mb-3 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
+            <p>1. Renter must be at least 18 years old with a valid driving license.</p>
+            <p>2. Security deposit is refundable subject to vehicle condition upon return.</p>
+            <p>3. Fuel expenses are to be borne by the renter.</p>
+            <p>4. Renter is responsible for any traffic violations or fines during the rental period.</p>
+            <p>5. Vehicle must be returned in the same condition as received.</p>
+            <p>6. Late returns will incur additional charges at hourly rates.</p>
+            <p>7. Cancellation policy: 100% refund if canceled 24 hours before pickup, 50% refund if canceled 12 hours before pickup, no refund for cancellations within 12 hours of pickup.</p>
+            <p>8. The company is not responsible for any accidents or damages to the renter or third parties.</p>
+            <p>9. Helmet is provided and must be worn at all times while riding.</p>
+            <p>10. Vehicle must not be taken outside the city limits without prior permission.</p>
+          </div>
+          
+          <div className="mb-3">
+            <label className="flex items-start text-sm">
+              <input
+                type="checkbox"
+                name="termsAccepted"
+                checked={formData.termsAccepted}
+                onChange={(e) => setFormData(prev => ({...prev, termsAccepted: e.target.checked}))}
+                required
+                className="mt-0.5 h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+              />
+              <span className="ml-2 text-xs">
+                I have read and agree to the terms and conditions of the rental agreement
+                <span className="text-red-500"> *</span>
+              </span>
+            </label>
+          </div>
+          
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Signature <span className="text-red-500">*</span>
+            </label>
+            <div className="border border-gray-300 rounded h-24 bg-white shadow-sm">
+              <SignaturePad
+                ref={signaturePadRef}
+                canvasProps={{
+                  className: 'signature-canvas w-full h-24'
+                }}
+              />
+            </div>
+            <div className="mt-1 flex justify-end">
               <button
                 type="button"
                 onClick={handleSignatureClear}
-                className="text-sm text-gray-600 hover:text-gray-900"
+                className="text-xs text-gray-600 hover:text-gray-800"
               >
-                Clear
+                Clear Signature
               </button>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Document Upload Section - Only show all required fields for new customers */}
-        <div className="mt-6">
-          <h4 className="text-sm font-medium text-gray-900 mb-2">Documents</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {isNewCustomer ? (
-              // Show all required document uploads for new customers
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Photo <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'photo')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    DL Front <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'dl_front')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    DL Back <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'dl_back')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Aadhar Front <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'aadhar_front')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Aadhar Back <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'aadhar_back')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                    required
-                  />
-                </div>
-              </>
-            ) : (
-              // Show optional document uploads for existing customers
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Update Photo (Optional)
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'photo')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Update DL Front (Optional)
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'dl_front')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Update DL Back (Optional)
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'dl_back')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Update Aadhar Front (Optional)
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'aadhar_front')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Update Aadhar Back (Optional)
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleFileChange(e, 'aadhar_back')}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Terms & Conditions Section */}
-        <div className="p-6">
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Terms & Conditions</h3>
-            <p className="mt-1 text-sm text-gray-500">Please read and accept our terms and conditions</p>
-          </div>
-
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <div className="h-48 overflow-y-auto prose prose-sm max-w-none mb-4">
-              <h4>Vehicle Rental Agreement Terms</h4>
-              <ol className="list-decimal pl-4 space-y-2">
-                <li>The renter must be at least 21 years old and possess a valid driving license.</li>
-                <li>The vehicle must be returned with the same amount of fuel as at the time of pickup.</li>
-                <li>The renter is responsible for any traffic violations, fines, or penalties incurred during the rental period.</li>
-                <li>The vehicle should not be used for any illegal activities or purposes not specified in the agreement.</li>
-                <li>The renter must report any accidents or damage to the vehicle immediately.</li>
-                <li>Insurance coverage is subject to the terms specified in the rental agreement.</li>
-                <li>Late returns will incur additional charges as specified in the rental agreement.</li>
-                <li>The vehicle should not be taken outside the specified geographical boundaries without prior permission.</li>
-                <li>Smoking is strictly prohibited inside the vehicle.</li>
-              </ol>
-            </div>
-
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={acceptedTerms}
-                onChange={(e) => setAcceptedTerms(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-              />
-              <span className="text-sm text-gray-700">
-                I have read and agree to the terms and conditions. I understand that by checking this box, I am giving my consent to be bound by these terms.
-              </span>
-            </label>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!acceptedTerms || isLoading}
-            className="px-4 py-2 text-sm font-medium text-white bg-orange-600 border border-transparent rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Submitting...
-              </>
-            ) : (
-              'Submit Booking'
-            )}
-          </button>
-        </div>
-      </form>
-    </div>
+      {/* Form Actions */}
+      <div className="p-4 flex justify-end space-x-2">
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          className="py-1.5 px-4 border border-gray-300 rounded shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="py-1.5 px-4 border border-transparent rounded shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isLoading ? (
+            <span className="flex items-center">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Processing...
+            </span>
+          ) : (
+            "Submit Booking"
+          )}
+        </button>
+      </div>
+    </form>
   );
-} 
+}
