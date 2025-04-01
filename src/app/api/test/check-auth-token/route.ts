@@ -4,6 +4,9 @@ import jwt from 'jsonwebtoken';
 import { JwtPayload } from 'jsonwebtoken';
 import { dynamic, runtime } from '@/app/api/config';
 
+// Explicitly export these to ensure the route is dynamic
+export { dynamic, runtime };
+
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 interface TokenResult {

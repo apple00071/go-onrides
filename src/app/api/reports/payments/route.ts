@@ -18,7 +18,7 @@ async function getPaymentReports(request: AuthenticatedRequest) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
-
+    
     if (!startDate || !endDate) {
       return NextResponse.json(
         { error: 'Start date and end date are required' },

@@ -207,7 +207,7 @@ export default function ReportViewPage() {
         >
           Back to Reports
         </Button>
-      </div>
+        </div>
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>

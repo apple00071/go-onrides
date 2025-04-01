@@ -9,14 +9,10 @@ export { dynamic, runtime };
 // Get a specific payment by ID
 async function getPayment(request: AuthenticatedRequest, { params }: { params: { id: string } }) {
   try {
+    // Get payment data
     const { data: payment, error } = await supabase
       .from('payments')
-      .select(`
-        *,
-        booking:bookings(booking_id, customer_id, vehicle_id),
-        customer:customers(first_name, last_name),
-        received_by:users(full_name)
-      `)
+      .select('*')
       .eq('id', params.id)
       .single();
 
@@ -27,8 +23,58 @@ async function getPayment(request: AuthenticatedRequest, { params }: { params: {
         { status: 404 }
       );
     }
+    
+    // Get related booking
+    let booking = null;
+    let customer = null;
+    let worker = null;
+    
+    if (payment.booking_id) {
+      const { data: bookingData } = await supabase
+        .from('bookings')
+        .select('id, booking_id, customer_id, vehicle_id')
+        .eq('id', payment.booking_id)
+        .single();
+        
+      if (bookingData) {
+        booking = bookingData;
+        
+        // Get customer data
+        if (booking.customer_id) {
+          const { data: customerData } = await supabase
+            .from('customers')
+            .select('id, first_name, last_name')
+            .eq('id', booking.customer_id)
+            .single();
+            
+          if (customerData) {
+            customer = customerData;
+          }
+        }
+      }
+    }
+    
+    // Get worker data
+    if (payment.received_by) {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('id, full_name')
+        .eq('id', payment.received_by)
+        .single();
+        
+      if (userData) {
+        worker = userData;
+      }
+    }
 
-    return NextResponse.json({ payment });
+    const enrichedPayment = {
+      ...payment,
+      booking,
+      customer,
+      worker_name: worker?.full_name
+    };
+
+    return NextResponse.json({ payment: enrichedPayment });
   } catch (error) {
     console.error('Error in get payment:', error);
     return NextResponse.json(

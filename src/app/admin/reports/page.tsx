@@ -35,15 +35,31 @@ export default function ReportsPage() {
   const fetchReportData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/reports?range=${dateRange}`, {
+      
+      // Use regular API with date range filtering, default is to use real data
+      const endpoint = `/api/reports?range=${dateRange}`;
+      
+      console.log(`Fetching report data from ${endpoint}`);
+      
+      const response = await fetch(endpoint, {
         credentials: 'include'
       });
       
+      // Log the response status and headers for debugging
+      console.log('Response status:', response.status);
+      console.log('Response headers:', {
+        contentType: response.headers.get('content-type'),
+        contentLength: response.headers.get('content-length')
+      });
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch report data');
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
+        throw new Error(`Failed to fetch report data: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('Received data:', data);
       setReportData(data);
     } catch (err) {
       console.error('Error fetching report data:', err);
@@ -63,6 +79,91 @@ export default function ReportsPage() {
       currency: 'INR',
       minimumFractionDigits: 0,
     }).format(amount);
+  };
+
+  const handleDownloadReport = () => {
+    if (!reportData) return;
+    
+    // Convert the data to CSV format
+    let csvContent = "data:text/csv;charset=utf-8,";
+    
+    // Add report metadata
+    const currentDate = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    csvContent += `Report Generated: ${currentDate}\n`;
+    csvContent += `Date Range: ${dateRange}\n\n`;
+    
+    // Add headers
+    csvContent += "Metric,Value\n";
+    
+    // Add data
+    csvContent += `Total Revenue,${reportData.totalRevenue}\n`;
+    csvContent += `Total Bookings,${reportData.totalBookings}\n`;
+    csvContent += `Active Bookings,${reportData.activeBookings}\n`;
+    csvContent += `Completed Bookings,${reportData.completedBookings}\n`;
+    csvContent += `Cancelled Bookings,${reportData.cancelledBookings}\n`;
+    
+    // Vehicle utilization
+    csvContent += `Total Vehicles,${reportData.vehicleUtilization.total}\n`;
+    csvContent += `Rented Vehicles,${reportData.vehicleUtilization.rented}\n`;
+    csvContent += `Available Vehicles,${reportData.vehicleUtilization.available}\n`;
+    csvContent += `Maintenance Vehicles,${reportData.vehicleUtilization.maintenance}\n`;
+    
+    // Revenue by vehicle type
+    csvContent += "\nVehicle Type,Revenue\n";
+    Object.entries(reportData.revenueByVehicleType).forEach(([type, revenue]) => {
+      csvContent += `${type.charAt(0).toUpperCase() + type.slice(1)},${revenue}\n`;
+    });
+    
+    // Monthly revenue
+    csvContent += "\nMonth,Revenue\n";
+    reportData.monthlyRevenue.forEach((month) => {
+      const formattedMonth = new Date(month.month).toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+      csvContent += `${formattedMonth},${month.revenue}\n`;
+    });
+    
+    // Create a download link
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    
+    // Create a more descriptive filename with date range
+    let fileName = "report_";
+    switch (dateRange) {
+      case 'today':
+        fileName += "today_";
+        break;
+      case 'last7days':
+        fileName += "last_7_days_";
+        break;
+      case 'last30days':
+        fileName += "last_30_days_";
+        break;
+      case 'thisMonth':
+        fileName += "this_month_";
+        break;
+      case 'lastMonth':
+        fileName += "last_month_";
+        break;
+      case 'thisYear':
+        fileName += "this_year_";
+        break;
+      default:
+        fileName += dateRange + "_";
+    }
+    fileName += new Date().toISOString().split('T')[0] + ".csv";
+    
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    
+    // Trigger download
+    link.click();
+    
+    // Clean up
+    document.body.removeChild(link);
   };
 
   if (isLoading) {
@@ -90,10 +191,14 @@ export default function ReportsPage() {
             View detailed reports and analytics about your business
           </p>
         </div>
-        <div className="mt-4 sm:mt-0">
+        <div className="mt-4 sm:mt-0 space-y-2">
           <select
             value={dateRange}
-            onChange={(e) => setDateRange(e.target.value)}
+            onChange={(e) => {
+              setDateRange(e.target.value);
+              // Trigger data fetch when date range changes
+              setTimeout(() => fetchReportData(), 100);
+            }}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
           >
             <option value="today">Today</option>
@@ -103,6 +208,26 @@ export default function ReportsPage() {
             <option value="lastMonth">Last Month</option>
             <option value="thisYear">This Year</option>
           </select>
+          
+          <div className="flex justify-between space-x-2">
+            <button
+              onClick={handleDownloadReport}
+              disabled={!reportData}
+              className="px-3 py-1 text-sm rounded bg-orange-500 text-white hover:bg-orange-600 transition-colors flex items-center space-x-1 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              title="Download report as CSV file"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span>Download Report</span>
+            </button>
+            <button
+              onClick={fetchReportData}
+              className="px-3 py-1 text-sm rounded bg-gray-800 text-white hover:bg-gray-900 transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
       </div>
 

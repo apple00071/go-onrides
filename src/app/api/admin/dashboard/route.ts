@@ -7,6 +7,9 @@ import { dynamic, runtime } from '@/app/api/config';
 import { withRoleCheck } from '@/lib/auth';
 import { withAuth } from '@/lib/auth';
 
+// Explicitly export these to ensure the route is dynamic
+export { dynamic, runtime };
+
 // Define interfaces for the database results
 interface RentalRecord {
   id: string;
@@ -172,7 +175,7 @@ async function handler(request: AuthenticatedRequest) {
 // Export the handler with role check
 export const GET = withRoleCheck(handler, ['admin']);
 
-// Default empty response
+// Default empty response 
 const emptyResponse: DashboardData = {
   stats: {
     totalCustomers: 0,
@@ -190,5 +193,3 @@ const emptyResponse: DashboardData = {
   },
   recentActivity: []
 }; 
-
-export { dynamic, runtime }; 

@@ -3,7 +3,10 @@ import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '@/lib/db';
-import { dynamic, revalidate } from '../../config';
+import { dynamic, runtime } from '../../config';
+
+// Explicitly export these to ensure the route is dynamic
+export { dynamic, runtime };
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
