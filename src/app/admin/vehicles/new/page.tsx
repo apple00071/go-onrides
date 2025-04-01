@@ -12,7 +12,10 @@ export default function NewVehiclePage() {
     type: 'bike',
     number_plate: '',
     status: 'available',
-    daily_rate: ''
+    daily_rate: '',
+    manufacturer: '',
+    year: '',
+    color: ''
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,7 +25,8 @@ export default function NewVehiclePage() {
     try {
       const dataToSend = {
         ...formData,
-        daily_rate: parseFloat(formData.daily_rate)
+        daily_rate: parseFloat(formData.daily_rate),
+        year: formData.year ? parseInt(formData.year) : null
       };
 
       const response = await fetch('/api/vehicles', {
@@ -34,13 +38,18 @@ export default function NewVehiclePage() {
         body: JSON.stringify(dataToSend),
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create vehicle');
+        throw new Error(result.error || 'Failed to create vehicle');
       }
 
       toast.success('Vehicle created successfully');
-      router.push('/admin/vehicles');
+      
+      // Add a slight delay before redirect to ensure state is updated
+      setTimeout(() => {
+        router.push('/admin/vehicles');
+      }, 500);
     } catch (error) {
       console.error('Error creating vehicle:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to create vehicle');
@@ -94,6 +103,8 @@ export default function NewVehiclePage() {
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
               >
                 <option value="bike">Bike</option>
+                <option value="scooter">Scooter</option>
+                <option value="motorcycle">Motorcycle</option>
               </select>
             </div>
 
@@ -145,6 +156,53 @@ export default function NewVehiclePage() {
                 min="0"
                 step="0.01"
                 value={formData.daily_rate}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
+              />
+            </div>
+            
+            {/* Manufacturer (Optional) */}
+            <div>
+              <label htmlFor="manufacturer" className="block text-sm font-medium text-gray-700">
+                Manufacturer (Optional)
+              </label>
+              <input
+                type="text"
+                name="manufacturer"
+                id="manufacturer"
+                value={formData.manufacturer}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
+              />
+            </div>
+            
+            {/* Year (Optional) */}
+            <div>
+              <label htmlFor="year" className="block text-sm font-medium text-gray-700">
+                Year (Optional)
+              </label>
+              <input
+                type="number"
+                name="year"
+                id="year"
+                min="1900"
+                max={new Date().getFullYear() + 1}
+                value={formData.year}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
+              />
+            </div>
+            
+            {/* Color (Optional) */}
+            <div>
+              <label htmlFor="color" className="block text-sm font-medium text-gray-700">
+                Color (Optional)
+              </label>
+              <input
+                type="text"
+                name="color"
+                id="color"
+                value={formData.color}
                 onChange={handleInputChange}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500 sm:text-sm"
               />

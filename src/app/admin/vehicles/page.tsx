@@ -4,49 +4,100 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
+import { toast } from 'react-hot-toast';
 
 interface Vehicle {
   id: string;
   model: string;
   type: string;
   number_plate: string;
-  manufacturer: string;
-  year: number;
-  color: string;
+  manufacturer?: string;
+  year?: number;
+  color?: string;
   status: string;
-  hourly_rate: number;
+  hourly_rate?: number;
   daily_rate: number;
-  weekly_rate: number;
+  weekly_rate?: number;
 }
 
 export default function VehiclesPage() {
   const router = useRouter();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchVehicles();
+
+    // Add an event listener for when the page regains focus (user navigates back)
+    const handleFocus = () => {
+      fetchVehicles();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const fetchVehicles = async () => {
     try {
-      setIsLoading(true);
-      const response = await fetch('/api/vehicles');
+      if (!isRefreshing) { // Only set isLoading on initial load, not refreshes
+        setIsLoading(true);
+      }
+      setIsRefreshing(true);
+      
+      const response = await fetch('/api/vehicles', {
+        // Add cache busting to ensure we get fresh data
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      });
       
       if (!response.ok) {
         throw new Error('Failed to fetch vehicles');
       }
 
-      const data = await response.json();
-      setVehicles(data.vehicles || []);
+      const result = await response.json();
+      
+      // Handle the API response structure
+      if (result.success && result.data?.vehicles) {
+        setVehicles(result.data.vehicles);
+      } else if (result.vehicles) {
+        // Fallback for backwards compatibility
+        setVehicles(result.vehicles);
+      } else {
+        // If neither structure exists, set to empty array
+        setVehicles([]);
+        console.warn('Unexpected API response structure:', result);
+      }
     } catch (err) {
       console.error('Error fetching vehicles:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
+  };
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    // Toast notification for better feedback
+    if (typeof window !== 'undefined' && 'toast' in window) {
+      // @ts-ignore - we know toast exists from the import
+      toast.loading('Refreshing vehicles...', { id: 'refresh-vehicles' });
+    }
+    fetchVehicles().then(() => {
+      if (typeof window !== 'undefined' && 'toast' in window) {
+        // @ts-ignore - we know toast exists from the import
+        toast.success('Vehicles refreshed!', { id: 'refresh-vehicles' });
+      }
+    });
   };
 
   const getStatusColor = (status: string) => {
@@ -63,9 +114,9 @@ export default function VehiclesPage() {
   };
 
   const filteredVehicles = vehicles.filter(vehicle => 
-    vehicle.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    vehicle.number_plate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    vehicle.manufacturer.toLowerCase().includes(searchTerm.toLowerCase())
+    vehicle.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    vehicle.number_plate?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (vehicle.manufacturer && vehicle.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   if (isLoading) {
@@ -93,7 +144,29 @@ export default function VehiclesPage() {
             A list of all vehicles in your fleet.
           </p>
         </div>
-        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+        <div className="mt-4 sm:mt-0 sm:flex space-x-3">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isRefreshing ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Refresh
+              </>
+            )}
+          </button>
           <button
             onClick={() => router.push('/admin/vehicles/new')}
             className="inline-flex items-center justify-center rounded-md border border-transparent bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 sm:w-auto"
@@ -172,7 +245,9 @@ export default function VehiclesPage() {
                               <div>
                                 <div className="font-medium text-gray-900">{vehicle.model}</div>
                                 <div className="text-gray-500">
-                                  {vehicle.manufacturer} • {vehicle.year} • {vehicle.color}
+                                  {vehicle.manufacturer && `${vehicle.manufacturer} • `}
+                                  {vehicle.year && `${vehicle.year} • `}
+                                  {vehicle.color && vehicle.color}
                                 </div>
                               </div>
                             </div>
@@ -189,9 +264,9 @@ export default function VehiclesPage() {
                             </span>
                           </td>
                           <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            <div>Hourly: {vehicle.hourly_rate}</div>
+                            {vehicle.hourly_rate && <div>Hourly: {vehicle.hourly_rate}</div>}
                             <div>Daily: {vehicle.daily_rate}</div>
-                            <div>Weekly: {vehicle.weekly_rate}</div>
+                            {vehicle.weekly_rate && <div>Weekly: {vehicle.weekly_rate}</div>}
                           </td>
                           <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                             <button
