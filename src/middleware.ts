@@ -9,6 +9,11 @@ export const dynamic = 'force-dynamic';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const secret = new TextEncoder().encode(JWT_SECRET);
 
+// Base URLs
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://goonriders.vercel.app';
+const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL || `${APP_URL}/admin`;
+const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL || `${APP_URL}/worker`;
+
 interface JWTPayload {
   id: string | number;
   email: string;
@@ -67,10 +72,10 @@ export async function middleware(request: NextRequest) {
       );
     }
     
-    // For other routes, redirect to login
-    const url = new URL('/login', request.url);
-    url.searchParams.set('from', pathname);
-    return NextResponse.redirect(url);
+    // For other routes, redirect to login with absolute URL
+    const loginUrl = new URL('/login', APP_URL);
+    loginUrl.searchParams.set('from', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   try {
@@ -79,11 +84,11 @@ export async function middleware(request: NextRequest) {
 
     // Check role-based access
     if (pathname.startsWith('/admin') && payload.role !== 'admin') {
-      return NextResponse.redirect(new URL('/unauthorized', request.url));
+      return NextResponse.redirect(new URL('/unauthorized', APP_URL));
     }
 
     if (pathname.startsWith('/worker') && !['admin', 'worker'].includes(payload.role)) {
-      return NextResponse.redirect(new URL('/unauthorized', request.url));
+      return NextResponse.redirect(new URL('/unauthorized', APP_URL));
     }
 
     // Add user info to headers for API routes
@@ -102,8 +107,9 @@ export async function middleware(request: NextRequest) {
   } catch (error) {
     console.error('Token verification failed:', error);
     
-    // Clear invalid token
-    const response = NextResponse.redirect(new URL('/login', request.url));
+    // Clear invalid token and redirect with absolute URL
+    const loginUrl = new URL('/login', APP_URL);
+    const response = NextResponse.redirect(loginUrl);
     response.cookies.delete('token');
     
     return response;

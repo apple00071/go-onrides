@@ -25,6 +25,7 @@ export default function LoginPage() {
   useEffect(() => {
     // If user is already logged in, redirect them
     if (user) {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://goonriders.vercel.app';
       const redirectPath = from || (user.role === 'admin' ? '/admin/dashboard' : '/worker/dashboard');
       router.replace(redirectPath);
     }
@@ -44,6 +45,7 @@ export default function LoginPage() {
       
       if (result.success) {
         // Redirect based on role and 'from' parameter
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://goonriders.vercel.app';
         const redirectPath = from || (result.data?.role === 'admin' ? '/admin/dashboard' : '/worker/dashboard');
         router.replace(redirectPath);
       } else {

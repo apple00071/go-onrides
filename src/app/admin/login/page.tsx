@@ -34,7 +34,8 @@ export default function AdminLogin() {
         throw new Error(data.error || 'Login failed');
       }
 
-      router.push('/admin/dashboard');
+      const adminDashboardUrl = '/admin/dashboard';
+      router.push(adminDashboardUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
