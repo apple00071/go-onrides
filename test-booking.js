@@ -48,7 +48,7 @@ async function testAuthentication() {
           phone: '9876123400',
           email: 'test@example.com'
         },
-        vehicle_id: 1,
+        vehicle_id: 19,
         pricing: {
           base_price: 1000,
           security_deposit: 500,

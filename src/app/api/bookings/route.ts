@@ -61,7 +61,7 @@ async function getBookings(request: AuthenticatedRequest) {
       start_date: booking.start_date,
       end_date: booking.end_date,
       status: booking.status,
-      amount: booking.total_amount || 0,
+      total_amount: booking.total_amount || 0,
       payment_status: booking.payment_status
     })) || [];
 
@@ -143,6 +143,57 @@ async function createBooking(request: AuthenticatedRequest) {
               ALTER TABLE bookings ALTER COLUMN total_amount SET NOT NULL;
               RAISE NOTICE 'Added NOT NULL constraint to total_amount column';
             END IF;
+
+            -- Check and add documents column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'documents'
+            ) THEN
+              ALTER TABLE bookings ADD COLUMN documents JSONB;
+              RAISE NOTICE 'Added missing documents column to bookings table';
+            END IF;
+            
+            -- Check and add signature column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'signature'
+            ) THEN
+              ALTER TABLE bookings ADD COLUMN signature TEXT;
+              RAISE NOTICE 'Added missing signature column to bookings table';
+            END IF;
+            
+            -- Add emergency contact columns if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'father_phone'
+            ) THEN
+              ALTER TABLE bookings ADD COLUMN father_phone TEXT;
+              RAISE NOTICE 'Added missing father_phone column to bookings table';
+            END IF;
+            
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'mother_phone'
+            ) THEN
+              ALTER TABLE bookings ADD COLUMN mother_phone TEXT;
+              RAISE NOTICE 'Added missing mother_phone column to bookings table';
+            END IF;
+            
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'emergency_contact1'
+            ) THEN
+              ALTER TABLE bookings ADD COLUMN emergency_contact1 TEXT;
+              RAISE NOTICE 'Added missing emergency_contact1 column to bookings table';
+            END IF;
+            
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'emergency_contact2'
+            ) THEN
+              ALTER TABLE bookings ADD COLUMN emergency_contact2 TEXT;
+              RAISE NOTICE 'Added missing emergency_contact2 column to bookings table';
+            END IF;
           END $$;
         `
       });
@@ -189,7 +240,7 @@ async function createBooking(request: AuthenticatedRequest) {
         { status: 400 }
       );
     }
-    
+
     // Check if customer already exists with this phone number
     let customerId = null;
     console.log('Checking if customer exists with phone:', customerData.phone);
@@ -280,8 +331,21 @@ async function createBooking(request: AuthenticatedRequest) {
               additionalData.dob = customerData.dob;
             }
             
-            if (customerData.aadhar_number) {
-              additionalData.aadhar_number = customerData.aadhar_number;
+            // Add emergency contact fields
+            if (customerData.father_phone) {
+              additionalData.father_phone = customerData.father_phone;
+            }
+            
+            if (customerData.mother_phone) {
+              additionalData.mother_phone = customerData.mother_phone;
+            }
+            
+            if (customerData.emergency_contact1) {
+              additionalData.emergency_contact1 = customerData.emergency_contact1;
+            }
+            
+            if (customerData.emergency_contact2) {
+              additionalData.emergency_contact2 = customerData.emergency_contact2;
             }
             
             const { error: updateError } = await supabase
@@ -322,7 +386,7 @@ async function createBooking(request: AuthenticatedRequest) {
         { status: 400 }
       );
     }
-    
+
     // Verify the vehicle exists
     const { data: vehicleData, error: vehicleError } = await supabase
       .from('vehicles')
@@ -337,7 +401,7 @@ async function createBooking(request: AuthenticatedRequest) {
         { status: 400 }
       );
     }
-    
+
     // Ensure we have a valid worker ID
     console.log('Checking worker ID:', request.user.id);
     let workerId = request.user.id;
@@ -348,7 +412,7 @@ async function createBooking(request: AuthenticatedRequest) {
       .select('id')
       .eq('id', workerId)
       .single();
-      
+
     if (workerCheckError || !workerExists) {
       console.log('Worker ID not found, looking for a valid user ID...');
       
@@ -378,7 +442,7 @@ async function createBooking(request: AuthenticatedRequest) {
             
           if (createUserError || !newUser) {
             console.error('Error creating fallback user:', createUserError);
-            return NextResponse.json(
+      return NextResponse.json(
               { error: 'Could not find or create a valid user for worker_id', details: createUserError },
               { status: 500 }
             );
@@ -417,15 +481,27 @@ async function createBooking(request: AuthenticatedRequest) {
       total_amount: totalAmount
     });
     
+    // Generate a unique booking ID
+    const bookingId = `BK${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+    
+    // Prepare base booking data with fields that are always needed
     const bookingData: Record<string, any> = {
-      vehicle_id: data.vehicle_id,
+      booking_id: bookingId,
       customer_id: customerId,
-      worker_id: workerId,
+      vehicle_id: data.vehicle_id,
       start_date: data.start_date,
       end_date: data.end_date,
-      base_price: basePrice,
-      total_amount: totalAmount,
-      status: 'pending'
+      status: 'pending',
+      payment_status: 'pending',
+      total_amount: pricing.total_amount,
+      base_price: pricing.base_price,
+      security_deposit: pricing.security_deposit || 0,
+      documents: data.documents || null,
+      signature: data.signature || null,
+      father_phone: data.customer_details?.father_phone || null,
+      mother_phone: data.customer_details?.mother_phone || null,
+      emergency_contact1: data.customer_details?.emergency_contact1 || null,
+      emergency_contact2: data.customer_details?.emergency_contact2 || null
     };
     
     // Conditionally include security_deposit if we can safely do so
@@ -456,7 +532,7 @@ async function createBooking(request: AuthenticatedRequest) {
         // If that fails, try a more minimal approach
         console.log('Trying minimal required fields approach...');
         
-        const minimalBookingData = {
+        const minimalBookingData: Record<string, any> = {
           vehicle_id: data.vehicle_id,
           customer_id: customerId,
           worker_id: workerId,
@@ -466,6 +542,17 @@ async function createBooking(request: AuthenticatedRequest) {
           total_amount: totalAmount || 0,
           status: 'pending'
         };
+        
+        // Add documents and signature fields if provided
+        if (data.documents) {
+          // Store for later use, but don't add to the initial object
+          console.log('Documents data provided for minimal approach, will update after booking creation');
+        }
+        
+        if (data.signature) {
+          // Store for later use, but don't add to the initial object
+          console.log('Signature data provided for minimal approach, will update after booking creation');
+        }
         
         const { data: fallbackBooking, error: fallbackError } = await supabase
           .from('bookings')
@@ -481,8 +568,19 @@ async function createBooking(request: AuthenticatedRequest) {
           try {
             const { error: sqlError } = await supabase.rpc('execute_sql', {
               sql_string: `
-                INSERT INTO bookings (vehicle_id, customer_id, worker_id, start_date, end_date, base_price, total_amount, status)
-                VALUES (${data.vehicle_id}, ${customerId}, ${workerId}, '${data.start_date}', '${data.end_date}', ${basePrice || 0}, ${totalAmount || 0}, 'pending')
+                -- Skip column creation as it may not be supported in this context
+                
+                -- Perform a simple insert with only core fields
+                INSERT INTO bookings (
+                  vehicle_id, customer_id, worker_id, 
+                  start_date, end_date, 
+                  base_price, total_amount, status
+                )
+                VALUES (
+                  ${data.vehicle_id}, ${customerId}, ${workerId}, 
+                  '${data.start_date}', '${data.end_date}', 
+                  ${basePrice || 0}, ${totalAmount || 0}, 'pending'
+                )
                 RETURNING id;
               `
             });
@@ -502,10 +600,10 @@ async function createBooking(request: AuthenticatedRequest) {
             
             console.log('Direct SQL insert succeeded!');
             
-            return NextResponse.json({
-              success: true,
+    return NextResponse.json({
+      success: true,
               message: 'Booking created successfully (SQL approach)',
-              booking: {
+      booking: {
                 vehicle_id: data.vehicle_id,
                 customer_id: customerId,
                 worker_id: workerId,
@@ -559,12 +657,120 @@ async function createBooking(request: AuthenticatedRequest) {
         await updateBookingAdditionalFields(bookingId, data);
       }
       
-      // Return success with the booking data
-      return NextResponse.json({ 
+      // Get the new booking data
+      const { data: newBookingData, error: fetchError } = await supabase
+        .from('bookings')
+        .select('*')
+        .eq('id', bookingId)
+        .limit(1);
+        
+      if (fetchError) {
+        console.error('Error fetching new booking:', fetchError);
+      }
+        
+      // Insert worked, return the booking data
+      console.log('Booking created successfully with ID:', bookingId);
+      
+      // Prepare the result object
+      const result: any = { 
         success: true, 
         message: 'Booking created successfully',
-        booking: newBooking?.[0] || null
-      });
+        booking: newBookingData?.[0] || null
+      };
+      
+      // Check if we have documents or signature to update
+      const hasDocsOrSignature = data.documents || data.signature;
+      
+      if (hasDocsOrSignature) {
+        console.log('Documents or signature provided - using direct SQL update');
+        try {
+          // First try to ensure the columns exist
+          try {
+            const { error: alterError } = await supabase.rpc('execute_sql', {
+              sql_string: `
+                DO $$
+                BEGIN
+                  -- Check and add documents column if missing
+                  IF NOT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'bookings' AND column_name = 'documents'
+                  ) THEN
+                    ALTER TABLE bookings ADD COLUMN documents JSONB;
+                    RAISE NOTICE 'Added documents column to bookings table';
+                  END IF;
+                  
+                  -- Check and add signature column if missing
+                  IF NOT EXISTS (
+                    SELECT FROM information_schema.columns 
+                    WHERE table_name = 'bookings' AND column_name = 'signature'
+                  ) THEN
+                    ALTER TABLE bookings ADD COLUMN signature TEXT;
+                    RAISE NOTICE 'Added signature column to bookings table';
+                  END IF;
+                END $$;
+              `
+            });
+            
+            if (alterError) {
+              console.warn('Error ensuring columns exist:', alterError);
+            }
+          } catch (alterError) {
+            console.warn('Exception ensuring columns exist:', alterError);
+          }
+          
+          // Now try to update the booking directly with SQL
+          const documentsJson = data.documents 
+            ? JSON.stringify(data.documents).replace(/'/g, "''") 
+            : null;
+            
+          const signatureText = data.signature 
+            ? data.signature.replace(/'/g, "''") 
+            : null;
+          
+          const updates = [];
+          if (data.documents) updates.push(`documents = '${documentsJson}'::jsonb`);
+          if (data.signature) updates.push(`signature = '${signatureText}'`);
+          
+          if (updates.length > 0) {
+            const { error: updateError } = await supabase.rpc('execute_sql', {
+              sql_string: `
+                UPDATE bookings 
+                SET ${updates.join(', ')}
+                WHERE id = ${bookingId}
+              `
+            });
+            
+            if (updateError) {
+              console.error('Error updating documents with SQL:', updateError);
+              result.documents_updated = false;
+              result.signature_updated = false;
+              result.document_update_error = `SQL update failed: ${updateError.message}`;
+              
+              // If this appears to be a schema cache issue, provide guidance
+              if (updateError.message.includes('schema cache')) {
+                result.document_update_instructions = [
+                  'This appears to be a schema cache issue.',
+                  'Connect to the Supabase dashboard',
+                  'Go to the SQL Editor',
+                  'Run: ALTER TABLE bookings ADD COLUMN IF NOT EXISTS documents JSONB;',
+                  'Run: ALTER TABLE bookings ADD COLUMN IF NOT EXISTS signature TEXT;'
+                ];
+              }
+            } else {
+              result.documents_updated = !!data.documents;
+              result.signature_updated = !!data.signature;
+            }
+          }
+        } catch (error) {
+          console.error('Exception during document SQL update:', error);
+          result.documents_updated = false;
+          result.signature_updated = false;
+          result.document_update_error = error instanceof Error ? error.message : 'Unknown error';
+        }
+      }
+      
+      // Return the booking data
+      return NextResponse.json(result);
     } catch (error) {
       console.error('Error in booking creation process:', error);
       return NextResponse.json(
@@ -584,42 +790,133 @@ async function createBooking(request: AuthenticatedRequest) {
 // Helper function to update additional booking fields without risking schema issues
 async function updateBookingAdditionalFields(bookingId: number, data: any) {
   try {
-    const updateData: Record<string, any> = {};
+    // Handle basic fields first (which are less likely to have schema issues)
+    const basicUpdateData: Record<string, any> = {};
     
-    // Add additional fields if they exist in the data
-    if (data.payment_method) updateData.payment_method = data.payment_method;
-    if (data.notes) updateData.notes = data.notes;
+    if (data.payment_method) basicUpdateData.payment_method = data.payment_method;
+    if (data.notes) basicUpdateData.notes = data.notes;
     
     // Only attempt to update if we have fields to update
-    if (Object.keys(updateData).length > 0) {
+    if (Object.keys(basicUpdateData).length > 0) {
       const { error: updateError } = await supabase
         .from('bookings')
-        .update(updateData)
+        .update(basicUpdateData)
         .eq('id', bookingId);
         
       if (updateError) {
         console.warn('Non-critical: Error updating additional booking details:', updateError);
+      } else {
+        console.log('Successfully updated basic booking details');
       }
     }
     
-    // Try to update documents and signature in a separate operation
+    // Handle documents and signature separately
     if (data.documents || data.signature) {
-      const docUpdateData: Record<string, any> = {};
+      console.log('Attempting to update documents and signature...');
       
-      if (data.documents) docUpdateData.documents = data.documents;
-      if (data.signature) docUpdateData.signature = data.signature;
-      
-      const { error: docUpdateError } = await supabase
-        .from('bookings')
-        .update(docUpdateData)
-        .eq('id', bookingId);
+      try {
+        // First ensure the columns exist using SQL
+        console.log('Ensuring columns exist...');
+        await forceSchemaRefresh();
         
-      if (docUpdateError) {
-        console.warn('Non-critical: Error updating documents and signature:', docUpdateError);
+        try {
+          // First try to directly update with documents and signature
+          const docsUpdateData: Record<string, any> = {};
+          
+          if (data.documents) docsUpdateData.documents = data.documents;
+          if (data.signature) docsUpdateData.signature = data.signature;
+          
+          if (Object.keys(docsUpdateData).length > 0) {
+            console.log('Updating with documents/signature data:', docsUpdateData);
+            const { error: docsError } = await supabase
+              .from('bookings')
+              .update(docsUpdateData)
+              .eq('id', bookingId);
+              
+            if (!docsError) {
+              console.log('Successfully updated documents and signature directly');
+              return;
+            }
+            
+            console.warn('Error updating documents and signature directly:', docsError);
+          }
+        } catch (directError) {
+          console.warn('Caught error during direct update:', directError);
+        }
+        
+        // If direct update fails, try individual SQL statements
+        if (data.documents) {
+          try {
+            // First try to update just the documents field
+            const { error: docOnlyError } = await supabase
+              .from('bookings')
+              .update({ documents: data.documents })
+              .eq('id', bookingId);
+              
+            if (docOnlyError) {
+              console.warn('Error updating documents alone:', docOnlyError);
+            } else {
+              console.log('Successfully updated documents alone');
+            }
+          } catch (docError) {
+            console.warn('Caught error updating documents:', docError);
+          }
+        }
+        
+        if (data.signature) {
+          try {
+            // Then try to update just the signature field
+            const { error: sigOnlyError } = await supabase
+              .from('bookings')
+              .update({ signature: data.signature })
+              .eq('id', bookingId);
+              
+            if (sigOnlyError) {
+              console.warn('Error updating signature alone:', sigOnlyError);
+            } else {
+              console.log('Successfully updated signature alone');
+            }
+          } catch (sigError) {
+            console.warn('Caught error updating signature:', sigError);
+          }
+        }
+      } catch (error) {
+        console.warn('Non-critical: Error ensuring columns for documents and signature:', error);
       }
     }
   } catch (error) {
     console.warn('Non-critical: Error updating additional booking data:', error);
+  }
+}
+
+// Helper function to verify if a column exists in a table
+async function verifyColumnExists(tableName: string, columnName: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('execute_sql', {
+      sql_string: `
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = '${tableName}' AND column_name = '${columnName}'
+        ) as exists;
+      `
+    });
+    
+    if (error) {
+      console.warn(`Error checking if ${columnName} exists in ${tableName}:`, error);
+      return false;
+    }
+    
+    // Parse the result to see if the column exists
+    const exists = data && Array.isArray(data) && data.length > 0 && data[0].exists === true;
+    
+    if (!exists) {
+      console.log(`Column '${columnName}' does not exist in table '${tableName}'`);
+    }
+    
+    return exists;
+  } catch (error) {
+    console.warn(`Error verifying column ${columnName} in table ${tableName}:`, error);
+    return false;
   }
 }
 

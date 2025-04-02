@@ -112,6 +112,10 @@ interface FormData {
   securityDeposit: number;
   files: Record<string, File | null>;
   termsAccepted: boolean;
+  father_phone?: string;
+  mother_phone?: string;
+  emergency_contact1?: string;
+  emergency_contact2?: string;
 }
 
 const TimeSelector = ({ 
@@ -391,7 +395,11 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
     baseRate: 0,
     securityDeposit: 0,
     files: {},
-    termsAccepted: false
+    termsAccepted: false,
+    father_phone: '',
+    mother_phone: '',
+    emergency_contact1: '',
+    emergency_contact2: ''
   });
 
   const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
@@ -612,7 +620,11 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
           dl_number: formData.dlNumber,
           dl_expiry: formData.dlExpiryDate?.toISOString(),
           dob: formData.dob?.toISOString(),
-          aadhar_number: formData.aadhaarNumber
+          aadhar_number: formData.aadhaarNumber,
+          father_phone: formData.father_phone,
+          mother_phone: formData.mother_phone,
+          emergency_contact1: formData.emergency_contact1,
+          emergency_contact2: formData.emergency_contact2
         },
         pricing: {
           base_price: parseFloat(formData.baseRate.toString()),
@@ -1068,6 +1080,72 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
               />
             </div>
           </div>
+          
+          {/* Emergency Contact Section */}
+          <div className="mt-6">
+            <div className="mb-3">
+              <h4 className="text-sm font-semibold text-gray-800">Emergency Contacts</h4>
+              <p className="text-xs text-gray-500">Contact information in case of emergencies</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Father's Phone
+                </label>
+                <input
+                  type="tel"
+                  name="father_phone"
+                  value={formData.father_phone || ''}
+                  onChange={handleInputChange}
+                  placeholder="Enter father's phone number"
+                  className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Mother's Phone
+                </label>
+                <input
+                  type="tel"
+                  name="mother_phone"
+                  value={formData.mother_phone || ''}
+                  onChange={handleInputChange}
+                  placeholder="Enter mother's phone number"
+                  className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Emergency Contact 1
+                </label>
+                <input
+                  type="tel"
+                  name="emergency_contact1"
+                  value={formData.emergency_contact1 || ''}
+                  onChange={handleInputChange}
+                  placeholder="Enter emergency contact number"
+                  className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Emergency Contact 2
+                </label>
+                <input
+                  type="tel"
+                  name="emergency_contact2"
+                  value={formData.emergency_contact2 || ''}
+                  onChange={handleInputChange}
+                  placeholder="Enter alternative emergency contact"
+                  className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1159,6 +1237,24 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
                 readOnly
                 className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm bg-gray-50 text-sm"
               />
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Payment Method <span className="text-red-500">*</span>
+              </label>
+              <select
+                name="payment_method"
+                value={formData.payment_method}
+                onChange={handleInputChange}
+                required
+                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
+              >
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="card">Card</option>
+                <option value="netbanking">Net Banking</option>
+              </select>
             </div>
           </div>
         </div>
@@ -1292,12 +1388,12 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
       <div className="border-b border-gray-200">
         <div className="p-4">
           <div className="mb-3">
-            <h3 className="text-base font-semibold text-gray-900">Notes & Payment</h3>
+            <h3 className="text-base font-semibold text-gray-900">Notes</h3>
             <p className="text-xs text-gray-500">Additional information</p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 gap-3">
+            <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Notes
               </label>
@@ -1309,24 +1405,6 @@ export default function BookingForm({ role, onSubmit, onCancel, initialData }: B
                 className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
                 placeholder="Enter any additional notes or special requirements"
               ></textarea>
-            </div>
-            
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Payment Method <span className="text-red-500">*</span>
-              </label>
-              <select
-                name="payment_method"
-                value={formData.payment_method}
-                onChange={handleInputChange}
-                required
-                className="block w-full py-1.5 px-2 border border-gray-300 rounded shadow-sm focus:ring-orange-500 focus:border-orange-500 text-sm"
-              >
-                <option value="cash">Cash</option>
-                <option value="upi">UPI</option>
-                <option value="card">Card</option>
-                <option value="netbanking">Net Banking</option>
-              </select>
             </div>
           </div>
         </div>

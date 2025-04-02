@@ -18,12 +18,33 @@ async function handler(request: AuthenticatedRequest) {
     const { count: totalVehicles } = await supabase
       .from('vehicles')
       .select('*', { count: 'exact', head: true });
+      
+    // Get total bookings count
+    const { count: totalBookings } = await supabase
+      .from('bookings')
+      .select('*', { count: 'exact', head: true });
 
     // Get active bookings count
     const { count: activeBookings } = await supabase
       .from('bookings')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'active');
+      
+    // Get total revenue
+    const { data: allPayments } = await supabase
+      .from('payments')
+      .select('amount')
+      .eq('status', 'completed');
+      
+    const totalRevenue = allPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+    
+    // Get pending payments
+    const { data: pendingPaymentsData } = await supabase
+      .from('bookings')
+      .select('total_amount')
+      .eq('payment_status', 'pending');
+      
+    const pendingPayments = pendingPaymentsData?.reduce((sum, booking) => sum + (booking.total_amount || 0), 0) || 0;
 
     // Get today's revenue
     const today = new Date().toISOString().split('T')[0];
@@ -34,56 +55,37 @@ async function handler(request: AuthenticatedRequest) {
 
     const todayRevenue = todayPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
 
-    // Get recent bookings
-    const { data: recentBookings } = await supabase
+    // Get recent bookings with details
+    const { data: recentBookings, error: bookingsError } = await supabase
       .from('bookings')
-      .select(`
-        *,
-        customer:customers(first_name, last_name),
-        vehicle:vehicles(model, number_plate)
-      `)
+      .select('*, customers(full_name), vehicles(make, model, registration_number)')
       .order('created_at', { ascending: false })
       .limit(5);
 
-    // Get recent payments
-    const { data: recentPayments } = await supabase
-      .from('payments')
-      .select(`
-        *,
-        booking:bookings(booking_id),
-        customer:customers(first_name, last_name)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(5);
+    if (bookingsError) {
+      console.error('Error fetching recent bookings:', bookingsError);
+    }
+
+    // Format and map the bookings data
+    const formattedBookings = recentBookings?.map(booking => {
+      return {
+        id: booking.id,
+        customer_name: booking.customers?.full_name || 'Unknown Customer',
+        vehicle: booking.vehicles ? `${booking.vehicles.make} ${booking.vehicles.model}` : 'Unknown Vehicle',
+        vehicle_number: booking.vehicles?.registration_number || 'Unknown',
+        start_date: booking.start_date,
+        end_date: booking.end_date,
+        total_amount: booking.total_amount || 0,
+        status: booking.status || 'pending'
+      };
+    }) || [];
 
     return NextResponse.json({
-      success: true,
-      data: {
-        totalCustomers: totalCustomers || 0,
-        totalVehicles: totalVehicles || 0,
-        activeBookings: activeBookings || 0,
-        todayRevenue,
-        recentBookings: recentBookings?.map(booking => ({
-          id: booking.id,
-          booking_id: booking.booking_id,
-          customer_name: `${booking.customer.first_name} ${booking.customer.last_name}`,
-          vehicle: `${booking.vehicle.model} (${booking.vehicle.number_plate})`,
-          start_date: booking.start_date,
-          end_date: booking.end_date,
-          status: booking.status,
-          amount: booking.total_amount,
-          payment_status: booking.payment_status
-        })) || [],
-        recentPayments: recentPayments?.map(payment => ({
-          id: payment.id,
-          booking_id: payment.booking?.booking_id,
-          customer_name: `${payment.customer.first_name} ${payment.customer.last_name}`,
-          amount: payment.amount,
-          method: payment.method,
-          status: payment.status,
-          created_at: payment.created_at
-        })) || []
-      }
+      totalBookings,
+      activeBookings,
+      totalRevenue,
+      pendingPayments,
+      recentBookings: formattedBookings
     });
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);

@@ -4,28 +4,46 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
+import { CalendarIcon, ClockIcon, CurrencyRupeeIcon, BanknotesIcon } from '@heroicons/react/24/outline';
 
 interface DashboardStats {
   totalBookings: number;
   activeBookings: number;
-    totalRevenue: number;
-    pendingPayments: number;
-    availableVehicles: number;
-    maintenanceVehicles: number;
-    totalCustomers: number;
-  overdueBookings: number;
+  totalRevenue: number;
+  pendingPayments: number;
 }
 
 interface BookingWithDetails {
   id: string;
-  customerName?: string;
-  vehicleModel?: string;
-  vehicleNumber?: string;
+  customer_name?: string;
+  vehicle?: string;
   start_date: string;
   end_date: string;
-  amount: number;
+  total_amount: number;
   status: string;
 }
+
+interface StatCardProps {
+  title: string;
+  value: string;
+  icon: React.ReactNode;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ title, value, icon }) => {
+  return (
+    <div className="bg-white overflow-hidden rounded-xl border border-gray-100 transition-all hover:shadow-lg hover:border-gray-200 p-5">
+      <div className="flex justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
+          <p className="text-2xl font-semibold text-gray-800">{value}</p>
+        </div>
+        <div className="bg-blue-50 p-2 rounded-lg h-fit">
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -39,52 +57,43 @@ export default function AdminDashboardPage() {
   }, []);
 
   const fetchDashboardData = async () => {
-      setIsLoading(true);
-      setError(null);
-      
+    setIsLoading(true);
     try {
       // Add timestamp to prevent caching
-      const timestamp = new Date().getTime();
-      const statsResponse = await fetch(`/api/admin/dashboard/stats?t=${timestamp}`, {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        },
-        cache: 'no-store'
+      const response = await fetch(`/api/admin/dashboard/stats?t=${Date.now()}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch dashboard data');
+      }
+      
+      const data = await response.json();
+      
+      setStats({
+        totalBookings: data.totalBookings || 0,
+        activeBookings: data.activeBookings || 0,
+        totalRevenue: data.totalRevenue || 0,
+        pendingPayments: data.pendingPayments || 0
       });
-
-      if (!statsResponse.ok) {
-        throw new Error('Failed to fetch dashboard statistics');
-      }
-
-      const statsData = await statsResponse.json();
-      if (!statsData.success) {
-        throw new Error(statsData.message || 'Failed to fetch dashboard statistics');
-      }
-
-      setStats(statsData.data);
-
-      // Fetch recent bookings
-      const bookingsResponse = await fetch('/api/bookings?limit=5&sort=created_at&order=desc');
-      if (!bookingsResponse.ok) {
-        throw new Error('Failed to fetch recent bookings');
-      }
-      const bookingsData = await bookingsResponse.json();
-      setRecentBookings(bookingsData.bookings || []);
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred while fetching dashboard data');
-    } finally {
+      
+      setRecentBookings(data.recentBookings || []);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setError('Failed to load dashboard data. Please try again later.');
       setIsLoading(false);
     }
   };
 
   const formatCurrency = (amount: number) => {
+    // Handle invalid amounts
+    if (typeof amount !== 'number' || isNaN(amount)) {
+      return '₹0';
+    }
+    
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'INR'
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(amount);
   };
 
@@ -97,7 +106,12 @@ export default function AdminDashboardPage() {
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    // Handle invalid status values
+    if (!status) {
+      return 'bg-gray-100 text-gray-800';
+    }
+    
+    switch (status.toLowerCase()) {
       case 'active':
         return 'bg-green-100 text-green-800';
       case 'completed':
@@ -212,59 +226,27 @@ export default function AdminDashboardPage() {
       </div>
       
         {/* Stats Overview */}
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="bg-white overflow-hidden rounded-xl border border-gray-100 transition-all hover:shadow-lg hover:border-gray-200">
-            <div className="p-5">
-              <dt className="text-sm font-medium text-gray-500 truncate">Total Bookings</dt>
-              <dd className="mt-2 flex items-baseline">
-                <div className="text-3xl font-semibold text-gray-800">
-                  {stats?.totalBookings || 0}
-                </div>
-                <div className="ml-2 flex items-baseline text-sm font-semibold text-emerald-600">
-                  <span>total</span>
-                </div>
-              </dd>
-            </div>
-          </div>
-          <div className="bg-white overflow-hidden rounded-xl border border-gray-100 transition-all hover:shadow-lg hover:border-gray-200">
-            <div className="p-5">
-              <dt className="text-sm font-medium text-gray-500 truncate">Active Bookings</dt>
-              <dd className="mt-2 flex items-baseline">
-                <div className="text-3xl font-semibold text-gray-800">
-                  {stats?.activeBookings || 0}
-                </div>
-                <div className="ml-2 flex items-baseline text-sm font-semibold text-blue-600">
-                  <span>active</span>
-                </div>
-              </dd>
-            </div>
-          </div>
-          <div className="bg-white overflow-hidden rounded-xl border border-gray-100 transition-all hover:shadow-lg hover:border-gray-200">
-            <div className="p-5">
-              <dt className="text-sm font-medium text-gray-500 truncate">Total Revenue</dt>
-              <dd className="mt-2 flex items-baseline">
-                <div className="text-3xl font-semibold text-gray-800">
-                  {formatCurrency(stats?.totalRevenue || 0)}
-                </div>
-                <div className="ml-2 flex items-baseline text-sm font-semibold text-amber-600">
-                  <span>revenue</span>
-                </div>
-              </dd>
-            </div>
-          </div>
-          <div className="bg-white overflow-hidden rounded-xl border border-gray-100 transition-all hover:shadow-lg hover:border-gray-200">
-            <div className="p-5">
-              <dt className="text-sm font-medium text-gray-500 truncate">Pending Payments</dt>
-              <dd className="mt-2 flex items-baseline">
-                <div className="text-3xl font-semibold text-gray-800">
-                  {formatCurrency(stats?.pendingPayments || 0)}
-                </div>
-                <div className="ml-2 flex items-baseline text-sm font-semibold text-red-600">
-                  <span>pending</span>
-                </div>
-              </dd>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <StatCard 
+            title="Total Bookings" 
+            value={stats?.totalBookings.toString() || '0'} 
+            icon={<CalendarIcon className="h-8 w-8 text-blue-500" />} 
+          />
+          <StatCard 
+            title="Active Bookings" 
+            value={stats?.activeBookings.toString() || '0'} 
+            icon={<ClockIcon className="h-8 w-8 text-green-500" />} 
+          />
+          <StatCard 
+            title="Total Revenue" 
+            value={formatCurrency(stats?.totalRevenue || 0)} 
+            icon={<CurrencyRupeeIcon className="h-8 w-8 text-emerald-500" />} 
+          />
+          <StatCard 
+            title="Pending Payments" 
+            value={formatCurrency(stats?.pendingPayments || 0)} 
+            icon={<BanknotesIcon className="h-8 w-8 text-amber-500" />} 
+          />
         </div>
 
         {/* Recent Bookings */}
@@ -303,20 +285,20 @@ export default function AdminDashboardPage() {
                       {recentBookings.map((booking) => (
                         <tr key={booking.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">
-                            {booking.customerName || 'Loading...'}
+                            {booking.customer_name || 'Unknown Customer'}
                           </td>
                           <td className="hidden sm:table-cell px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                            {booking.vehicleModel || 'Loading...'} • {booking.vehicleNumber || 'XX-XX-XX'}
+                            {booking.vehicle || 'Unknown Vehicle'}
                           </td>
                           <td className="hidden md:table-cell px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                            {formatDate(booking.start_date)} - {formatDate(booking.end_date)}
+                            {booking.start_date ? formatDate(booking.start_date) : 'N/A'} - {booking.end_date ? formatDate(booking.end_date) : 'N/A'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                            {formatCurrency(booking.amount)}
+                            {formatCurrency(booking.total_amount || 0)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${getStatusColor(booking.status)}`}>
-                              {booking.status}
+                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full ${getStatusColor(booking.status || 'pending')}`}>
+                              {booking.status || 'pending'}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

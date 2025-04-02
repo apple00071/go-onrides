@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 interface User {
   id: number | string;
   username: string;
+  email?: string;
+  full_name?: string;
   role: 'admin' | 'worker';
   permissions?: string[];
 }

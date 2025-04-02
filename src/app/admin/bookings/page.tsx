@@ -13,14 +13,13 @@ interface Booking {
   start_date: string;
   end_date: string;
   status: string;
-  amount: number;
+  total_amount: number;
 }
 
 interface EnhancedBooking extends Booking {
   customer_name?: string;
   vehicle_model?: string;
   vehicle_type?: string;
-  total_amount?: number;
 }
 
 export default function BookingListPage() {
@@ -291,23 +290,19 @@ export default function BookingListPage() {
                     onClick={() => router.push(`/admin/bookings/${booking.id}`)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {booking.booking_id || booking.id}
+                      {booking.booking_id || `B-${booking.id}`}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {booking.customer_name}
+                      {booking.customer_name || 'Unknown'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {booking.vehicle_model}
+                      {booking.vehicle_model || 'Unknown Vehicle'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(booking.start_date)} - {formatDate(booking.end_date)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
-                          booking.status
-                        )}`}
-                      >
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(booking.status)}`}>
                         {booking.status}
                       </span>
                     </td>

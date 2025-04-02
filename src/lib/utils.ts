@@ -5,7 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const getStatusColor = (status: string) => {
+export const getStatusColor = (status: string | null | undefined) => {
+  if (!status) return 'bg-gray-100 text-gray-800';
+  
   const colors = {
     pending: 'bg-yellow-100 text-yellow-800',
     active: 'bg-green-100 text-green-800',
@@ -17,30 +19,58 @@ export const getStatusColor = (status: string) => {
     maintenance: 'bg-yellow-100 text-yellow-800',
     retired: 'bg-gray-100 text-gray-800'
   };
-  return colors[status.toLowerCase() as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+  
+  try {
+    return colors[status.toLowerCase() as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+  } catch (error) {
+    console.error("Error getting status color:", error);
+    return 'bg-gray-100 text-gray-800';
+  }
 };
 
-export function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase();
+export function getInitials(name: string | null | undefined): string {
+  if (!name) return '';
+  
+  try {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase();
+  } catch (error) {
+    console.error("Error getting initials:", error);
+    return '';
+  }
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(amount);
+export function formatCurrency(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || isNaN(Number(amount))) return 'N/A';
+  
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 0,
+    }).format(amount);
+  } catch (error) {
+    console.error("Error formatting currency:", error);
+    return 'Invalid Amount';
+  }
 }
 
-export function formatDate(date: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }).format(new Date(date));
+export function formatDate(date: string | Date | null | undefined): string {
+  if (!date) return 'N/A';
+  
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }).format(typeof date === 'string' ? new Date(date) : date);
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return 'Invalid Date';
+  }
 }
 
 /**
