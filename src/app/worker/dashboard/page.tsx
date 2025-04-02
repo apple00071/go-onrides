@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Booking, Vehicle, Customer, User, Permission } from '@/types';
+import { Booking, Vehicle, Customer, Permission } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorAlert from '@/components/ui/ErrorAlert';
@@ -45,7 +45,12 @@ export default function WorkerDashboard() {
   }, []);
 
   const hasPermission = (permission: Permission) => {
-    return user?.permissions?.includes(permission) || user?.permissions?.includes('*');
+    // Fall back to role-based permission if no explicit permissions
+    return Boolean(
+      user?.permissions?.includes(permission) || 
+      user?.permissions?.includes('*') || 
+      user?.role === 'admin'
+    );
   };
 
   const fetchDashboardData = async () => {

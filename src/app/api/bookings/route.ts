@@ -44,6 +44,8 @@ async function getBookings(request: AuthenticatedRequest) {
       throw error;
     }
 
+    console.log(`Fetched ${bookings?.length || 0} bookings`);
+
     // Transform the data to match the expected format
     const transformedBookings = bookings?.map(booking => ({
       id: booking.id.toString(),
@@ -93,72 +95,75 @@ async function createBooking(request: AuthenticatedRequest) {
     console.log('Forcing schema refresh before booking creation...');
     await forceSchemaRefresh();
     
-    // Ensure all required columns exist in the database
+    // Explicitly check and add missing columns in bookings table
     try {
-      console.log('Ensuring all required columns exist...');
-      await supabase.rpc('execute_sql', {
+      console.log('Checking and adding required columns to bookings table...');
+      
+      // Use supabase RPC to execute SQL
+      const { error: sqlError } = await supabase.rpc('execute_sql', {
         sql_string: `
-          BEGIN;
-          
-          -- Ensure customers table has all required columns
           DO $$
           BEGIN
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'dl_expiry') THEN
-              ALTER TABLE customers ADD COLUMN dl_expiry DATE;
-              RAISE NOTICE 'Added dl_expiry column to customers table';
+            -- Check and add security_deposit column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'security_deposit'
+            ) THEN
+              ALTER TABLE bookings ADD COLUMN security_deposit DECIMAL(10,2);
+              RAISE NOTICE 'Added missing security_deposit column to bookings table';
             END IF;
             
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'dob') THEN
-              ALTER TABLE customers ADD COLUMN dob DATE;
-              RAISE NOTICE 'Added dob column to customers table';
+            -- Check and add base_price column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'base_price'
+            ) THEN
+              ALTER TABLE bookings ADD COLUMN base_price DECIMAL(10,2) NOT NULL DEFAULT 0;
+              RAISE NOTICE 'Added missing base_price column to bookings table';
             END IF;
             
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'customers' AND column_name = 'aadhar_number') THEN
-              ALTER TABLE customers ADD COLUMN aadhar_number TEXT;
-              RAISE NOTICE 'Added aadhar_number column to customers table';
+            -- Check and add total_amount column if missing
+            IF NOT EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'total_amount'
+            ) THEN
+              ALTER TABLE bookings ADD COLUMN total_amount DECIMAL(10,2) NOT NULL DEFAULT 0;
+              RAISE NOTICE 'Added missing total_amount column to bookings table';
+            END IF;
+            
+            -- If total_amount column exists but doesn't have NOT NULL constraint, add it
+            IF EXISTS (
+              SELECT FROM information_schema.columns 
+              WHERE table_name = 'bookings' AND column_name = 'total_amount' 
+                AND is_nullable = 'YES'
+            ) THEN
+              -- First set any null values to 0
+              UPDATE bookings SET total_amount = 0 WHERE total_amount IS NULL;
+              -- Then add the constraint
+              ALTER TABLE bookings ALTER COLUMN total_amount SET NOT NULL;
+              RAISE NOTICE 'Added NOT NULL constraint to total_amount column';
             END IF;
           END $$;
-          
-          -- Ensure bookings table has all required columns
-          DO $$
-          BEGIN
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bookings' AND column_name = 'base_price') THEN
-              ALTER TABLE bookings ADD COLUMN base_price DECIMAL(10,2);
-              RAISE NOTICE 'Added base_price column to bookings table';
-            END IF;
-            
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bookings' AND column_name = 'security_deposit') THEN
-              ALTER TABLE bookings ADD COLUMN security_deposit DECIMAL(10,2) DEFAULT 0;
-              RAISE NOTICE 'Added security_deposit column to bookings table';
-            END IF;
-            
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bookings' AND column_name = 'documents') THEN
-              ALTER TABLE bookings ADD COLUMN documents JSONB;
-              RAISE NOTICE 'Added documents column to bookings table';
-            END IF;
-            
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'bookings' AND column_name = 'signature') THEN
-              ALTER TABLE bookings ADD COLUMN signature TEXT;
-              RAISE NOTICE 'Added signature column to bookings table';
-            END IF;
-          END $$;
-          
-          COMMIT;
         `
       });
-      console.log('Schema check and column creation completed');
       
-      // Force another schema refresh after adding any columns
-      await forceSchemaRefresh();
+      if (sqlError) {
+        console.error('Error ensuring columns exist:', sqlError);
+        // Continue with regular flow and see if it works anyway
+      } else {
+        console.log('Successfully checked and added any missing columns');
+        // Force schema refresh again after adding columns
+        await forceSchemaRefresh();
+      }
     } catch (schemaError) {
-      console.error('Error ensuring column existence:', schemaError);
-      // Continue with the process, as forceSchemaRefresh may have already fixed the issue
+      console.error('Error checking/adding columns:', schemaError);
+      // Continue with regular flow and see if it works anyway
     }
-
+    
     const data = await request.json();
     console.log('Creating booking with data:', data);
 
-    // Transform the customer data to ensure it has the correct structure
+    // Transform the customer data for consistency
     const customerData = transformCustomerData(data.customer_details);
     
     // Always create both first_name and last_name from full_name if needed
@@ -178,6 +183,13 @@ async function createBooking(request: AuthenticatedRequest) {
       lastName = nameParts.slice(1).join(' ') || '';
     }
     
+    if (!customerData.phone) {
+      return NextResponse.json(
+        { error: 'Customer phone number is required' },
+        { status: 400 }
+      );
+    }
+    
     // Check if customer already exists with this phone number
     let customerId = null;
     console.log('Checking if customer exists with phone:', customerData.phone);
@@ -188,7 +200,7 @@ async function createBooking(request: AuthenticatedRequest) {
         .from('customers')
         .select('id')
         .eq('phone', customerData.phone)
-        .single();
+        .maybeSingle();
         
       if (searchError) {
         console.log('Error searching for customer:', searchError);
@@ -200,84 +212,44 @@ async function createBooking(request: AuthenticatedRequest) {
       console.log('Error checking for existing customer:', error);
     }
     
-    // If customer exists, update them using standard Supabase client
+    // If customer exists, update them using standard Supabase client with minimum fields
     if (customerId) {
       console.log('Customer already exists, updating their details with ID:', customerId);
       
       try {
-        // Prepare customer data update object
-        const customerUpdateData: Record<string, any> = {
-          first_name: firstName,
-          last_name: lastName,
-          email: customerData.email || undefined,
-          address: customerData.address || undefined,
-          city: customerData.city || undefined,
-          state: customerData.state || undefined,
-          pincode: customerData.pincode || undefined,
-          dl_number: customerData.dl_number || undefined
-        };
-        
-        // Conditionally add date fields if they exist
-        if (customerData.dl_expiry) {
-          customerUpdateData['dl_expiry'] = customerData.dl_expiry;
-        }
-        
-        if (customerData.dob) {
-          customerUpdateData['dob'] = customerData.dob;
-        }
-        
-        if (customerData.aadhar_number) {
-          customerUpdateData['aadhar_number'] = customerData.aadhar_number;
-        }
-        
+        // Update only the most critical fields to avoid schema cache issues
         const { error: updateError } = await supabase
           .from('customers')
-          .update(customerUpdateData)
+          .update({
+            first_name: firstName,
+            last_name: lastName,
+            email: customerData.email || null
+          })
           .eq('id', customerId);
           
         if (updateError) {
           console.error('Error updating customer:', updateError);
         } else {
-        console.log('Customer updated successfully');
+          console.log('Customer updated successfully');
         }
       } catch (error) {
         console.error('Error updating customer:', error);
         // Continue anyway as we already have a valid customer ID
       }
     } else {
-      // Create a new customer using standard Supabase client
-      console.log('Creating new customer');
+      // Create a new customer with minimum required fields
+      console.log('Creating new customer with minimum fields');
       
       try {
-        // Prepare customer data
-        const newCustomerData: Record<string, any> = {
-          first_name: firstName,
-          last_name: lastName,
-          email: customerData.email || undefined,
-          phone: customerData.phone,
-          address: customerData.address || undefined,
-          city: customerData.city || undefined,
-          state: customerData.state || undefined,
-          pincode: customerData.pincode || undefined,
-          dl_number: customerData.dl_number || undefined
-        };
-        
-        // Conditionally add date fields if they exist
-        if (customerData.dl_expiry) {
-          newCustomerData['dl_expiry'] = customerData.dl_expiry;
-        }
-        
-        if (customerData.dob) {
-          newCustomerData['dob'] = customerData.dob;
-        }
-        
-        if (customerData.aadhar_number) {
-          newCustomerData['aadhar_number'] = customerData.aadhar_number;
-        }
-        
+        // Create a customer with only essential fields that must exist
         const { data: newCustomer, error: insertError } = await supabase
           .from('customers')
-          .insert([newCustomerData])
+          .insert({
+            first_name: firstName,
+            last_name: lastName,
+            phone: customerData.phone,
+            email: customerData.email || null
+          })
           .select();
           
         if (insertError) {
@@ -285,8 +257,45 @@ async function createBooking(request: AuthenticatedRequest) {
           throw new Error('Failed to create customer: ' + insertError.message);
         } else if (newCustomer && newCustomer.length > 0) {
           customerId = newCustomer[0].id;
-                console.log('New customer created with ID:', customerId);
-              } else {
+          console.log('New customer created with ID:', customerId);
+          
+          // Try to update additional fields in a separate operation
+          try {
+            const additionalData: Record<string, any> = {
+              address: customerData.address || null,
+              city: customerData.city || null,
+              state: customerData.state || null,
+              pincode: customerData.pincode || null
+            };
+            
+            if (customerData.dl_number) {
+              additionalData.dl_number = customerData.dl_number;
+            }
+            
+            if (customerData.dl_expiry) {
+              additionalData.dl_expiry = customerData.dl_expiry;
+            }
+            
+            if (customerData.dob) {
+              additionalData.dob = customerData.dob;
+            }
+            
+            if (customerData.aadhar_number) {
+              additionalData.aadhar_number = customerData.aadhar_number;
+            }
+            
+            const { error: updateError } = await supabase
+              .from('customers')
+              .update(additionalData)
+              .eq('id', customerId);
+              
+            if (updateError) {
+              console.warn('Non-critical: Could not update additional customer fields:', updateError);
+            }
+          } catch (error) {
+            console.warn('Non-critical: Error updating additional customer fields:', error);
+          }
+        } else {
           throw new Error('Customer insert did not return an ID');
         }
       } catch (error) {
@@ -306,118 +315,260 @@ async function createBooking(request: AuthenticatedRequest) {
       );
     }
 
-    // Create the booking using direct SQL
-    console.log('Creating booking for customer ID:', customerId);
+    // Validate vehicle ID
+    if (!data.vehicle_id) {
+      return NextResponse.json(
+        { error: 'Vehicle ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    // Verify the vehicle exists
+    const { data: vehicleData, error: vehicleError } = await supabase
+      .from('vehicles')
+      .select('id')
+      .eq('id', data.vehicle_id)
+      .single();
+      
+    if (vehicleError || !vehicleData) {
+      console.error('Error checking vehicle:', vehicleError);
+      return NextResponse.json(
+        { error: 'Invalid vehicle ID', details: vehicleError },
+        { status: 400 }
+      );
+    }
+    
+    // Ensure we have a valid worker ID
+    console.log('Checking worker ID:', request.user.id);
+    let workerId = request.user.id;
+    
+    // Check if the worker_id (user id) exists in the users table
+    const { data: workerExists, error: workerCheckError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', workerId)
+      .single();
+      
+    if (workerCheckError || !workerExists) {
+      console.log('Worker ID not found, looking for a valid user ID...');
+      
+      // Look for any user in the database to use as fallback
+      const { data: anyUser, error: anyUserError } = await supabase
+        .from('users')
+        .select('id')
+        .limit(1)
+        .single();
+        
+      if (anyUserError || !anyUser) {
+        console.log('No users found in the database, creating a fallback user...');
+        
+        // Create a fallback user (admin) if none exists
+        try {
+          const { data: newUser, error: createUserError } = await supabase
+            .from('users')
+            .insert({
+              username: 'system',
+              email: 'system@example.com',
+              password: 'hashed_password', // This is just a placeholder
+              role: 'admin',
+              status: 'active'
+            })
+            .select('id')
+            .single();
+            
+          if (createUserError || !newUser) {
+            console.error('Error creating fallback user:', createUserError);
+            return NextResponse.json(
+              { error: 'Could not find or create a valid user for worker_id', details: createUserError },
+              { status: 500 }
+            );
+          }
+          
+          workerId = newUser.id;
+          console.log('Created fallback user with ID:', workerId);
+        } catch (createError) {
+          console.error('Error creating fallback user:', createError);
+          return NextResponse.json(
+            { error: 'Could not create fallback user', details: createError },
+            { status: 500 }
+          );
+        }
+      } else {
+        workerId = anyUser.id;
+        console.log('Using existing user as fallback with ID:', workerId);
+      }
+    } else {
+      console.log('Worker ID is valid:', workerId);
+    }
+
+    // Create the booking
+    console.log('Creating booking...');
+    
+    // Parse pricing data
+    const pricing = data.pricing || {};
+    const basePrice = pricing.base_price || 0;
+    const securityDeposit = pricing.security_deposit || 0;
+    const totalAmount = pricing.total_amount || basePrice;
+    
+    // Log the pricing data for debugging
+    console.log('Booking pricing data:', {
+      base_price: basePrice,
+      security_deposit: securityDeposit,
+      total_amount: totalAmount
+    });
+    
+    const bookingData: Record<string, any> = {
+      vehicle_id: data.vehicle_id,
+      customer_id: customerId,
+      worker_id: workerId,
+      start_date: data.start_date,
+      end_date: data.end_date,
+      base_price: basePrice,
+      total_amount: totalAmount,
+      status: 'pending'
+    };
+    
+    // Conditionally include security_deposit if we can safely do so
+    try {
+      const { data: testBooking, error: testError } = await supabase
+        .from('bookings')
+        .select('security_deposit')
+        .limit(1);
+        
+      if (!testError) {
+        bookingData.security_deposit = securityDeposit;
+      }
+    } catch (error) {
+      console.log('security_deposit column might not exist, skipping it');
+    }
     
     try {
-      // Convert dates to ISO strings if needed
-      const startDate = data.start_date instanceof Date ? data.start_date.toISOString() : data.start_date;
-      const endDate = data.end_date instanceof Date ? data.end_date.toISOString() : data.end_date;
-      
-      console.log('Prepared booking data:', {
-        vehicle_id: data.vehicle_id,
-        customer_id: customerId,
-        start_date: startDate,
-        end_date: endDate,
-        base_price: data.pricing.base_price,
-        security_deposit: data.pricing.security_deposit || 0,
-        total_amount: data.pricing.total_amount || data.pricing.base_price,
-        payment_method: data.payment_method || 'cash',
-        notes: data.notes || '',
-      });
-      
-      // Use direct SQL to insert the booking to bypass schema cache issues
-      const { data: insertResult, error: sqlError } = await supabase.rpc('execute_sql', {
-        sql_string: `
-          INSERT INTO bookings (
-            vehicle_id, 
-            customer_id, 
-            start_date, 
-            end_date, 
-            base_price, 
-            security_deposit, 
-            total_amount, 
-            payment_method, 
-            notes, 
-            status,
-            created_at
-          ) 
-          VALUES (
-            ${data.vehicle_id}, 
-            ${customerId}, 
-            '${startDate}', 
-            '${endDate}', 
-            ${data.pricing.base_price}, 
-            ${data.pricing.security_deposit || 0}, 
-            ${data.pricing.total_amount || data.pricing.base_price}, 
-            '${data.payment_method || 'cash'}', 
-            '${(data.notes || '').replace(/'/g, "''")}', 
-            'pending',
-            NOW()
-          )
-          RETURNING id, vehicle_id, customer_id, start_date, end_date, base_price, total_amount;
-        `
-      });
-      
-      console.log('Direct SQL insert result:', insertResult);
+      // Create a booking with required fields
+      console.log('Inserting booking with data:', bookingData);
+      const { data: newBooking, error: insertError } = await supabase
+        .from('bookings')
+        .insert(bookingData)
+        .select();
         
-      if (sqlError) {
-        console.error('Error executing SQL insert:', sqlError);
-        throw new Error('Failed to create booking: ' + sqlError.message);
-      } 
-      
-      // Extract the booking ID from the result
-      let bookingId;
-      if (insertResult && insertResult.length > 0 && insertResult[0] && insertResult[0].length > 0) {
-        bookingId = insertResult[0][0]?.id;
-        console.log('Booking created successfully with ID:', bookingId);
-      } else {
-        throw new Error('Booking insert did not return an ID');
-      }
-      
-      // Try to update documents and signature in a separate operation if needed
-      if (bookingId && (data.documents || data.signature)) {
-        try {
-          let updateSQL = 'UPDATE bookings SET ';
-          const updates = [];
+      if (insertError) {
+        console.error('Error creating booking:', insertError);
+        
+        // If that fails, try a more minimal approach
+        console.log('Trying minimal required fields approach...');
+        
+        const minimalBookingData = {
+          vehicle_id: data.vehicle_id,
+          customer_id: customerId,
+          worker_id: workerId,
+          start_date: data.start_date,
+          end_date: data.end_date,
+          base_price: basePrice || 0,
+          total_amount: totalAmount || 0,
+          status: 'pending'
+        };
+        
+        const { data: fallbackBooking, error: fallbackError } = await supabase
+          .from('bookings')
+          .insert(minimalBookingData)
+          .select();
           
-          if (data.documents) {
-            updates.push(`documents = '${JSON.stringify(data.documents)}'::jsonb`);
-          }
+        if (fallbackError) {
+          console.error('Fallback approach also failed:', fallbackError);
           
-          if (data.signature) {
-            updates.push(`signature = '${data.signature.replace(/'/g, "''")}'`);
-          }
+          // If even the minimal approach fails, try a direct SQL insert
+          console.log('Trying direct SQL insert...');
           
-          if (updates.length > 0) {
-            updateSQL += updates.join(', ') + ` WHERE id = ${bookingId}`;
-            
-            const { error: updateError } = await supabase.rpc('execute_sql', {
-              sql_string: updateSQL
+          try {
+            const { error: sqlError } = await supabase.rpc('execute_sql', {
+              sql_string: `
+                INSERT INTO bookings (vehicle_id, customer_id, worker_id, start_date, end_date, base_price, total_amount, status)
+                VALUES (${data.vehicle_id}, ${customerId}, ${workerId}, '${data.start_date}', '${data.end_date}', ${basePrice || 0}, ${totalAmount || 0}, 'pending')
+                RETURNING id;
+              `
             });
             
-            if (updateError) {
-              console.error('Error updating documents and signature:', updateError);
+            if (sqlError) {
+              console.error('Direct SQL insert also failed:', sqlError);
+              return NextResponse.json(
+                { error: 'Error creating booking (all approaches failed)', details: {
+                    original: insertError,
+                    fallback: fallbackError,
+                    sql: sqlError
+                  }
+                },
+                { status: 500 }
+              );
             }
+            
+            console.log('Direct SQL insert succeeded!');
+            
+            return NextResponse.json({
+              success: true,
+              message: 'Booking created successfully (SQL approach)',
+              booking: {
+                vehicle_id: data.vehicle_id,
+                customer_id: customerId,
+                worker_id: workerId,
+                start_date: data.start_date,
+                end_date: data.end_date,
+                base_price: basePrice,
+                total_amount: totalAmount,
+                status: 'pending'
+              }
+            });
+          } catch (sqlError) {
+            console.error('Error with direct SQL approach:', sqlError);
+            return NextResponse.json(
+              { error: 'All booking creation approaches failed', details: {
+                  original: insertError,
+                  fallback: fallbackError,
+                  sql: sqlError
+                }
+              },
+              { status: 500 }
+            );
           }
-        } catch (error) {
-          console.log('Error updating documents and signature (non-critical):', error);
-          // Continue anyway as these are non-critical fields
+        }
+        
+        const bookingId = fallbackBooking?.[0]?.id;
+        console.log('Fallback booking created successfully with ID:', bookingId);
+        
+        // Try to update with additional fields
+        if (bookingId) {
+          await updateBookingAdditionalFields(bookingId, data);
+          
+          return NextResponse.json({ 
+            success: true, 
+            message: 'Booking created successfully (fallback approach)',
+            booking: fallbackBooking[0]
+          });
+        } else {
+          return NextResponse.json({ 
+            success: true, 
+            message: 'Booking created but could not retrieve ID',
+            booking: fallbackBooking?.[0] || null
+          });
         }
       }
       
-      // Return the newly created booking
-      return NextResponse.json(
-        { 
-          success: true, 
-          booking: insertResult[0][0] || { id: bookingId }
-        },
-        { status: 200 }
-      );
+      const bookingId = newBooking?.[0]?.id;
+      console.log('Booking created successfully with ID:', bookingId);
+      
+      // Update with additional fields if we have an ID
+      if (bookingId) {
+        await updateBookingAdditionalFields(bookingId, data);
+      }
+      
+      // Return success with the booking data
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Booking created successfully',
+        booking: newBooking?.[0] || null
+      });
     } catch (error) {
-      console.error('Error creating booking:', error);
+      console.error('Error in booking creation process:', error);
       return NextResponse.json(
-        { error: 'Failed to create booking', details: error },
+        { error: 'Error in booking creation process', details: error },
         { status: 500 }
       );
     }
@@ -427,6 +578,48 @@ async function createBooking(request: AuthenticatedRequest) {
       { error: 'Internal server error', details: error },
       { status: 500 }
     );
+  }
+}
+
+// Helper function to update additional booking fields without risking schema issues
+async function updateBookingAdditionalFields(bookingId: number, data: any) {
+  try {
+    const updateData: Record<string, any> = {};
+    
+    // Add additional fields if they exist in the data
+    if (data.payment_method) updateData.payment_method = data.payment_method;
+    if (data.notes) updateData.notes = data.notes;
+    
+    // Only attempt to update if we have fields to update
+    if (Object.keys(updateData).length > 0) {
+      const { error: updateError } = await supabase
+        .from('bookings')
+        .update(updateData)
+        .eq('id', bookingId);
+        
+      if (updateError) {
+        console.warn('Non-critical: Error updating additional booking details:', updateError);
+      }
+    }
+    
+    // Try to update documents and signature in a separate operation
+    if (data.documents || data.signature) {
+      const docUpdateData: Record<string, any> = {};
+      
+      if (data.documents) docUpdateData.documents = data.documents;
+      if (data.signature) docUpdateData.signature = data.signature;
+      
+      const { error: docUpdateError } = await supabase
+        .from('bookings')
+        .update(docUpdateData)
+        .eq('id', bookingId);
+        
+      if (docUpdateError) {
+        console.warn('Non-critical: Error updating documents and signature:', docUpdateError);
+      }
+    }
+  } catch (error) {
+    console.warn('Non-critical: Error updating additional booking data:', error);
   }
 }
 

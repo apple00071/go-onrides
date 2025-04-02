@@ -7,6 +7,7 @@ interface User {
   id: number | string;
   username: string;
   role: 'admin' | 'worker';
+  permissions?: string[];
 }
 
 interface AuthContextType {

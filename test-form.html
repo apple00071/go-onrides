@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Booking API Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, button {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow: auto;
+        }
+        .section {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+        .button-group button {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Booking API Test</h1>
+    
+    <div class="section" id="loginSection">
+        <h2>Step 1: Login</h2>
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" value="demo">
+        </div>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" value="demo123">
+        </div>
+        <button onclick="login()">Login</button>
+        <div id="loginResponse" class="response"></div>
+    </div>
+
+    <div class="section" id="testSection">
+        <h2>Step 2: Test API Endpoints</h2>
+        <div class="button-group">
+            <button onclick="testAuth()">Test Authentication</button>
+            <button onclick="testDB('basic')">Test DB Connection</button>
+            <button onclick="testDB('test-insert')">Test DB Insert</button>
+        </div>
+        <div id="testResponse" class="response"></div>
+    </div>
+
+    <div class="section" id="bookingSection">
+        <h2>Step 3: Create Booking</h2>
+        <div class="form-group">
+            <label for="firstName">Customer First Name:</label>
+            <input type="text" id="firstName" value="Test">
+        </div>
+        <div class="form-group">
+            <label for="lastName">Customer Last Name:</label>
+            <input type="text" id="lastName" value="Customer">
+        </div>
+        <div class="form-group">
+            <label for="phone">Customer Phone:</label>
+            <input type="text" id="phone" value="9876123400">
+        </div>
+        <div class="form-group">
+            <label for="email">Customer Email:</label>
+            <input type="email" id="email" value="test@example.com">
+        </div>
+        <div class="form-group">
+            <label for="vehicleId">Vehicle ID:</label>
+            <input type="number" id="vehicleId" value="1">
+        </div>
+        <div class="form-group">
+            <label for="basePrice">Base Price:</label>
+            <input type="number" id="basePrice" value="1000">
+        </div>
+        <div class="form-group">
+            <label for="securityDeposit">Security Deposit:</label>
+            <input type="number" id="securityDeposit" value="500">
+        </div>
+        <div class="form-group">
+            <label for="totalAmount">Total Amount:</label>
+            <input type="number" id="totalAmount" value="1500">
+        </div>
+        <div class="form-group">
+            <label for="startDate">Start Date:</label>
+            <input type="date" id="startDate" value="2023-06-01">
+        </div>
+        <div class="form-group">
+            <label for="endDate">End Date:</label>
+            <input type="date" id="endDate" value="2023-06-05">
+        </div>
+        <div class="button-group">
+            <button onclick="createBooking()">Create Booking</button>
+            <button onclick="createTestBooking()">Create Using Test Endpoint</button>
+        </div>
+        <div id="bookingResponse" class="response"></div>
+    </div>
+
+    <script>
+        let authToken = '';
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const loginResponse = document.getElementById('loginResponse');
+
+            loginResponse.innerText = 'Logging in...';
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username,
+                        password
+                    }),
+                    credentials: 'include' // Important for cookies
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    loginResponse.innerText = 'Login successful!\n\n' + JSON.stringify(data, null, 2);
+                    authToken = 'Authenticated via cookie';
+                } else {
+                    loginResponse.innerText = 'Login failed!\n\n' + JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                loginResponse.innerText = 'Error: ' + error.message;
+                console.error('Login error:', error);
+            }
+        }
+
+        async function testAuth() {
+            if (!authToken) {
+                alert('Please login first!');
+                return;
+            }
+
+            const testResponse = document.getElementById('testResponse');
+            testResponse.innerText = 'Testing authentication...';
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/test-auth', {
+                    method: 'GET',
+                    credentials: 'include' // Important for cookies
+                });
+
+                const data = await response.json();
+                testResponse.innerText = `Status: ${response.status}\n\n${JSON.stringify(data, null, 2)}`;
+                console.log('Auth test response:', response.status, data);
+            } catch (error) {
+                testResponse.innerText = 'Error: ' + error.message;
+                console.error('Auth test error:', error);
+            }
+        }
+
+        async function testDB(queryType) {
+            const testResponse = document.getElementById('testResponse');
+            testResponse.innerText = `Testing database (${queryType})...`;
+            
+            try {
+                const response = await fetch(`http://localhost:3000/api/test-db?query=${queryType}`, {
+                    method: 'GET',
+                    credentials: 'include' // Include cookies for auth if needed
+                });
+
+                const data = await response.json();
+                testResponse.innerText = `Status: ${response.status}\n\n${JSON.stringify(data, null, 2)}`;
+                console.log('DB test response:', response.status, data);
+            } catch (error) {
+                testResponse.innerText = 'Error: ' + error.message;
+                console.error('DB test error:', error);
+            }
+        }
+
+        async function createBooking() {
+            if (!authToken) {
+                alert('Please login first!');
+                return;
+            }
+
+            const bookingResponse = document.getElementById('bookingResponse');
+            bookingResponse.innerText = 'Creating booking...';
+
+            try {
+                const bookingData = {
+                    customer_details: {
+                        first_name: document.getElementById('firstName').value,
+                        last_name: document.getElementById('lastName').value,
+                        phone: document.getElementById('phone').value,
+                        email: document.getElementById('email').value
+                    },
+                    vehicle_id: parseInt(document.getElementById('vehicleId').value),
+                    pricing: {
+                        base_price: parseInt(document.getElementById('basePrice').value),
+                        security_deposit: parseInt(document.getElementById('securityDeposit').value),
+                        total_amount: parseInt(document.getElementById('totalAmount').value)
+                    },
+                    start_date: document.getElementById('startDate').value,
+                    end_date: document.getElementById('endDate').value
+                };
+
+                console.log('Sending booking data:', bookingData);
+
+                const response = await fetch('http://localhost:3000/api/bookings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(bookingData),
+                    credentials: 'include' // Important for cookies
+                });
+
+                const responseData = await response.json();
+                
+                bookingResponse.innerText = `Status: ${response.status}\n\n${JSON.stringify(responseData, null, 2)}`;
+                
+                // Also log to console for debugging
+                console.log('Booking response:', response.status, responseData);
+                
+            } catch (error) {
+                bookingResponse.innerText = 'Error: ' + error.message;
+                console.error('Booking creation error:', error);
+            }
+        }
+
+        async function createTestBooking() {
+            if (!authToken) {
+                alert('Please login first!');
+                return;
+            }
+
+            const bookingResponse = document.getElementById('bookingResponse');
+            bookingResponse.innerText = 'Creating booking using test endpoint...';
+
+            try {
+                const bookingData = {
+                    customer_details: {
+                        first_name: document.getElementById('firstName').value,
+                        last_name: document.getElementById('lastName').value,
+                        phone: document.getElementById('phone').value,
+                        email: document.getElementById('email').value
+                    },
+                    vehicle_id: parseInt(document.getElementById('vehicleId').value),
+                    pricing: {
+                        base_price: parseInt(document.getElementById('basePrice').value),
+                        security_deposit: parseInt(document.getElementById('securityDeposit').value),
+                        total_amount: parseInt(document.getElementById('totalAmount').value)
+                    },
+                    start_date: document.getElementById('startDate').value,
+                    end_date: document.getElementById('endDate').value
+                };
+
+                console.log('Sending booking data to test endpoint:', bookingData);
+
+                const response = await fetch('http://localhost:3000/api/test-booking', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(bookingData),
+                    credentials: 'include' // Important for cookies
+                });
+
+                const responseData = await response.json();
+                
+                bookingResponse.innerText = `Status: ${response.status}\n\n${JSON.stringify(responseData, null, 2)}`;
+                
+                // Also log to console for debugging
+                console.log('Test booking response:', response.status, responseData);
+                
+            } catch (error) {
+                bookingResponse.innerText = 'Error: ' + error.message;
+                console.error('Test booking creation error:', error);
+            }
+        }
+    </script>
+</body>
+</html> 

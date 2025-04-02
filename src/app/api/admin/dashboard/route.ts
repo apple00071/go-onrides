@@ -9,7 +9,7 @@ import { withAuth } from '@/lib/auth';
 
 // Explicitly export these to ensure the route is dynamic
 export const runtime = 'nodejs';
-export { dynamic, };
+export { dynamic };
 
 // Define interfaces for the database results
 interface RentalRecord {

@@ -68,7 +68,7 @@ export default function VehiclesPage() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []); // Remove isRefreshing from dependencies to break the cycle
+  }, [isRefreshing]); // Include isRefreshing in the dependency array
 
   useEffect(() => {
     fetchVehicles();
